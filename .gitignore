@@ -1,3 +1,10 @@
+airflow/logs
+airflow/plugins
+airflow/ingestion-*
+fileserver/files
+fileserver/uploads
+minio/
+mongodb/
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
