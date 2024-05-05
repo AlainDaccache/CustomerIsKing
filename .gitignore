@@ -5,6 +5,11 @@ fileserver/files
 fileserver/uploads
 minio/
 mongodb/
+llm/data/*
+llm/src/last_ingestion_time.txt
+llm/DB/
+llm/models/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

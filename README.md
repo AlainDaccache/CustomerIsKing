@@ -135,6 +135,49 @@ Download `DBeaver` and create a database connection for Postgres.
 * Username: alan
 * Password: qwerty98
 
+### LLM
+
+* Ubuntu 22.04
+* CUDA: 12.3
+* GPU: NVIDIA GeForce RTX 2070
+* Nvidia-SMI 545.34
+* Driver Version 546.26
+* Python 3.10.6
+Add nvidia container runtime to Docker:
+https://medium.com/htc-research-engineering-blog/nvidia-docker-on-wsl2-f891dfe34ab
+```
+sudo apt-get update
+sudo apt-get install -y nvidia-container-toolkit
+sudo nvidia-ctk runtime configure --runtime=docker
+sudo systemctl restart docker
+docker info|grep -i runtime
+ Runtimes: nvidia runc
+ Default Runtime: runc
+sudo docker run --rm --runtime=nvidia --gpus all nvidia/cuda:12.3.1-base-ubuntu20.04 nvidia-smi
+sudo docker run --gpus all nvcr.io/nvidia/k8s/cuda-sample:nbody nbody -gpu -benchmark
+```
+
+https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/1.13.5/install-guide.html
+
+
+If using WSL then on Docker Desktop -> Settings -> Docker Engine, 
+
+```
+{
+    "runtimes":{
+        "nvidia":{
+            "path":"/usr/bin/nvidia-container-runtime",
+            "runtimeArgs":[
+                
+            ]
+        }
+    }
+}
+```
+
+python -m pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/nightly/cu121
+python -m pip install openpyxl langchain-community gradio accelerate bitsandbytes kaleido python-multipart langchain chromadb langchainhub bs4 InstructorEmbedding sentence-transformers docx2txt gpt4all unstructured[pdf]
+
 ### Jupyter
 
 Go [here](http://localhost:8888/lab/tree/work/customer_lifetime_value.ipynb) and run all the cells (it will stop at the "API" section at the end because

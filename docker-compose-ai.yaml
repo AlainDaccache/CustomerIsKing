@@ -1,0 +1,36 @@
+version: '3.8'
+services:
+  application:
+    build:
+      context: ./llm
+      dockerfile: ./Dockerfile
+    ports:
+      - 5000:5000
+    runtime: nvidia
+    image: application
+    container_name: application
+    volumes:
+      - ./llm:/app/
+    networks:
+      - net
+    stdin_open: true # docker run -i
+    tty: true # docker run -t
+
+  chroma:
+    image: ghcr.io/chroma-core/chroma:latest
+    volumes:
+      - index_data:/chroma/.chroma/index
+    ports:
+      - 8000:8000
+    networks:
+      - net
+
+volumes:
+  index_data:
+    driver: local
+  backups:
+    driver: local
+
+networks:
+  net:
+    driver: bridge
