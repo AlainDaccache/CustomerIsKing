@@ -9,6 +9,7 @@ services:
     runtime: nvidia
     image: application
     container_name: application
+    # entrypoint: cd src && python -m main
     volumes:
       - ./llm:/app/
     networks:
@@ -18,8 +19,14 @@ services:
 
   chroma:
     image: ghcr.io/chroma-core/chroma:latest
+    container_name: chroma
     volumes:
       - index_data:/chroma/.chroma/index
+    # - ./chroma/data:/chroma/chroma
+    # command: uvicorn chromadb.app:app --reload --workers 1 --host 0.0.0.0 --port 8000 --log-config log_config.yml
+    environment:
+      - IS_PERSISTENT=TRUE
+      - ALLOW_RESET=TRUE
     ports:
       - 8000:8000
     networks:

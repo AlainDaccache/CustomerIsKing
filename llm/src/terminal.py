@@ -1,17 +1,11 @@
 from constants import *
 import argparse
-import time
-
-import argparse
-import os
-import torch
-from constants import *
-from data_handler import ingest, load_db
+from data_handler import FileReader, ChromaCRUD
 from model_handler import spin_up_llm
 from langchain.callbacks.manager import CallbackManager
 from langchain.callbacks.streaming_stdout import StreamingStdOutCallbackHandler
 
-LAST_INGESTION_FILE = "last_ingestion_time.txt"
+import time
 
 
 def launch_terminal(
@@ -65,104 +59,6 @@ def launch_terminal(
         source_docs = [doc.metadata["source"] for doc in res["source_documents"]]
         print("Source documents:\n", source_docs)
         # print(res)
-
-
-def read_last_ingestion_time():
-    if os.path.exists(LAST_INGESTION_FILE):
-        with open(LAST_INGESTION_FILE, "r") as file:
-            last_time = file.read().strip()
-            return int(last_time)
-    return None
-
-
-def update_last_ingestion_time():
-    current_time = str(int(time.time()))  # Convert current time to timestamp
-    with open(LAST_INGESTION_FILE, "w") as file:
-        file.write(current_time)
-
-
-def get_new_files(last_time):
-    if last_time is None:
-        last_time = 0  # minimum time
-    print("Last time", time.ctime(last_time))
-
-    new_files = []
-    for root, dirs, files in os.walk(DATA_FOLDER_PATH):
-        for file in files:
-            filepath = os.path.join(root, file)
-            # we get the max because not all files recently moved have a
-            # recent modified time. so in that case, we get the created time
-            # this behaviour happens during drag/drop, copy/paste file the modified
-            # time stays what it was, but the created time changes to NOW
-            modified_time = max(os.path.getmtime(filepath), os.path.getctime(filepath))
-            print("File:", filepath, "Modified_time", time.ctime(modified_time))
-            if modified_time > float(last_time):
-                new_files.append(filepath)
-    return new_files
-
-
-def get_paths_from_folder(folder):
-    file_paths = []
-
-    for root, dirs, files in os.walk(folder):
-        for f in files:
-            file_path = os.path.join(root, f)
-            file_paths.append(file_path)
-
-        for d in dirs:
-            subfolder = os.path.join(root, d)
-            file_paths.extend(get_paths_from_folder(subfolder))
-
-    return file_paths
-
-
-def ingest_data(
-    paths=None,
-    mode=None,
-    db_chunk_size=DB_CHUNK_SIZE,
-    db_chunk_overlap=DB_CHUNK_OVERLAP,
-    embedding_model_name=EMBEDDING_MODEL_NAME,
-):
-    if paths is None and mode is None:
-        raise Exception("Bad use")
-
-    if mode == "incremental":
-        last_ingestion_time = read_last_ingestion_time()
-        file_paths = get_new_files(last_ingestion_time)
-        print(
-            f"Incremental mode. Ingesting new files since last ingestion: {file_paths}"
-        )
-        update_last_ingestion_time()
-    elif mode == "full":
-        # TODO remove all existing embeddings from VectorDB
-        print("Full mode. Ingesting all files from the 'data' folder.")
-        print("Data Folder Path:", DATA_FOLDER_PATH)
-
-        file_paths = get_paths_from_folder(folder=DATA_FOLDER_PATH)
-        update_last_ingestion_time()
-    elif mode is not None:
-        raise Exception("Invalid ingestion mode")
-    else:
-        pass
-
-    if paths is not None:
-        file_paths = []
-        for path in paths:
-            print(path)
-            abs_path = os.path.join(DATA_FOLDER_PATH, path)
-            if os.path.isdir(path):
-                file_paths += get_paths_from_folder(folder=abs_path)
-            else:
-                file_paths.append(abs_path)
-
-    print("File paths:\n", file_paths)
-    if len(file_paths):
-        ingest(
-            file_paths=file_paths,
-            chunk_size=db_chunk_size,
-            chunk_overlap=db_chunk_overlap,
-            embedding_model_name=embedding_model_name,
-        )
 
 
 if __name__ == "__main__":
@@ -285,9 +181,34 @@ if __name__ == "__main__":
         help=f"Embedding model name (default: {EMBEDDING_MODEL_NAME})",
     )
 
+    ingest_data_from_minio_parser = subparsers.add_parser(
+        "ingest_data_from_minio", help="Ingest data from Minio bucket"
+    )
+    # Add arguments for ingesting data from Minio bucket
+    ingest_data_from_minio_parser.add_argument(
+        "--endpoint_url", help="Minio endpoint URL"
+    )
+    ingest_data_from_minio_parser.add_argument("--access_key", help="Minio access key")
+    ingest_data_from_minio_parser.add_argument("--secret_key", help="Minio secret key")
+    ingest_data_from_minio_parser.add_argument(
+        "--bucket_name", help="Minio bucket name"
+    )
+    ingest_data_from_minio_parser.add_argument(
+        "--object_prefix", help="Prefix for objects in Minio bucket"
+    )
+
     args = parser.parse_args()
 
     if args.command == "spin_up_llm":
+        if args.from_mlflow:
+            import mlflow
+
+            run_id = args.run_id
+            model_path_from_artifact = args.model_path
+            model = mlflow.pyfunc.load_model(
+                f"runs:/{run_id}/{model_path_from_artifact}"
+            )
+
         launch_terminal(
             model_type=args.model_type,
             model_id=args.model_id,
@@ -303,25 +224,47 @@ if __name__ == "__main__":
             chain_type=args.chain_type,
         )
     elif args.command == "ingest_data_from_paths":
-        ingest_data(
-            paths=args.paths,
-            db_chunk_size=args.db_chunk_size,
-            db_chunk_overlap=args.db_chunk_overlap,
-            embedding_model_name=args.embedding_model_name,
-        )
+        vector_client = ChromaCRUD()
+        file_reader = FileReader(vector_client=vector_client)
+        file_reader.ingest_data(paths=args.paths)
 
     elif args.command == "ingest_data_from_mode":
-        print(args.full)
-        print(args.incremental)
+        vector_client = ChromaCRUD()
+        file_reader = FileReader(vector_client=vector_client)
+
         if not (args.full ^ args.incremental):
             parser.error("Please specify either --full or --incremental")
 
         mode = "full" if args.full else "incremental"
-        ingest_data(
-            mode=mode,
-            db_chunk_size=args.db_chunk_size,
-            db_chunk_overlap=args.db_chunk_overlap,
-            embedding_model_name=args.embedding_model_name,
+
+        collection_name = args.collection_name
+        if mode == "full":
+            if not vector_client.collection_exists(collection_name):
+                # If collection doesn't exist, add it
+                vector_client.create_collection(collection_name)
+            else:
+                vector_client.delete_collection(collection_name)
+        file_reader.ingest_data(mode="full")
+
+    elif args.command == "ingest_data_from_minio":
+        # Handle ingesting data from Minio bucket
+        vector_client = ChromaCRUD()
+        file_reader = FileReader(vector_client=vector_client)
+        from data_handler import MinioClient
+
+        minio_client = MinioClient(
+            endpoint_url=args.endpoint_url,
+            access_key=args.access_key,
+            secret_key=args.secret_key,
         )
+        file_reader.ingest_from_blob(
+            blob_client=minio_client,
+            bucket_name=args.bucket_name,
+            download_path=os.path.join(DATA_FOLDER_PATH, args.bucket_name),
+        )
+    elif args.command == "register_embedding_model":
+        mlflow_client = None
+        embedding_model_name = args.model_name
+        device_type = args.device_type
     else:
         print("Invalid command")

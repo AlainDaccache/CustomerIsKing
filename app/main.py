@@ -21,30 +21,43 @@ class QueueCallback(BaseCallbackHandler):
         return self.q.empty()
 
 
-def launch_app(model_id=MODEL_ID, model_basename=MODEL_BASENAME, context_window_size=CONTEXT_WINDOW_SIZE,
-               n_gpu_layers=N_GPU_LAYERS, n_batch=N_BATCH, max_new_tokens=MAX_NEW_TOKENS,
-               cpu_percentage=CPU_PERCENTAGE, device_type=DEVICE_TYPE, use_memory=USE_MEMORY,
-               system_prompt=SYSTEM_PROMPT, model_type=MODEL_TYPE, chain_type=CHAIN_TYPE,
-               embedding_model_name: str = EMBEDDING_MODEL_NAME):
+def launch_app(
+    model_id=MODEL_ID,
+    model_basename=MODEL_BASENAME,
+    context_window_size=CONTEXT_WINDOW_SIZE,
+    n_gpu_layers=N_GPU_LAYERS,
+    n_batch=N_BATCH,
+    max_new_tokens=MAX_NEW_TOKENS,
+    cpu_percentage=CPU_PERCENTAGE,
+    device_type=DEVICE_TYPE,
+    use_memory=USE_MEMORY,
+    system_prompt=SYSTEM_PROMPT,
+    model_type=MODEL_TYPE,
+    chain_type=CHAIN_TYPE,
+    embedding_model_name: str = EMBEDDING_MODEL_NAME,
+):
     q = Queue()
     job_done = object()
 
     # callback_manager = CallbackManager([StreamingStdOutCallbackHandler()])
     callback_manager = CallbackManager([QueueCallback(q)])
 
-    qa = spin_up_llm(model_type=model_type,
-                     model_id=model_id,
-                     model_basename=model_basename,
-                     context_window_size=context_window_size,
-                     n_gpu_layers=n_gpu_layers,
-                     n_batch=n_batch,
-                     max_new_tokens=max_new_tokens,
-                     cpu_percentage=cpu_percentage,
-                     device_type=device_type,
-                     use_memory=use_memory,
-                     system_prompt=system_prompt,
-                     chain_type=chain_type,
-                     callback_manager=callback_manager)
+    # TODO abstract away
+    qa = spin_up_llm(
+        model_type=model_type,
+        model_id=model_id,
+        model_basename=model_basename,
+        context_window_size=context_window_size,
+        n_gpu_layers=n_gpu_layers,
+        n_batch=n_batch,
+        max_new_tokens=max_new_tokens,
+        cpu_percentage=cpu_percentage,
+        device_type=device_type,
+        use_memory=use_memory,
+        system_prompt=system_prompt,
+        chain_type=chain_type,
+        callback_manager=callback_manager,
+    )
 
     def answer(question):
         def task():
@@ -70,7 +83,9 @@ def launch_app(model_id=MODEL_ID, model_basename=MODEL_BASENAME, context_window_
     """
 
     with gr.Blocks() as demo:
-        chatbot = gr.Chatbot([[None, s]], )
+        chatbot = gr.Chatbot(
+            [[None, s]],
+        )
         msg = gr.Textbox()
         clear = gr.Button("Clear")
 
@@ -92,21 +107,29 @@ def launch_app(model_id=MODEL_ID, model_basename=MODEL_BASENAME, context_window_
                 except Empty:
                     continue
 
-        msg.submit(user, [msg, chatbot], [msg, chatbot], queue=False).then(bot, chatbot, chatbot)
+        msg.submit(user, [msg, chatbot], [msg, chatbot], queue=False).then(
+            bot, chatbot, chatbot
+        )
         clear.click(lambda: None, None, chatbot, queue=False)
 
     demo.queue()
-    demo.launch(share=False,
-                debug=False,
-                server_name="0.0.0.0",
-                ssl_verify=False
-                )
+    demo.launch(share=False, debug=False, server_name="0.0.0.0", ssl_verify=False)
 
 
 if __name__ == "__main__":
     print(CHAIN_TYPE)
-    launch_app(model_id=MODEL_ID, model_basename=MODEL_BASENAME, context_window_size=CONTEXT_WINDOW_SIZE,
-               n_gpu_layers=N_GPU_LAYERS, n_batch=N_BATCH, max_new_tokens=MAX_NEW_TOKENS,
-               cpu_percentage=CPU_PERCENTAGE, device_type=DEVICE_TYPE, use_memory=USE_MEMORY,
-               system_prompt=SYSTEM_PROMPT, chain_type=CHAIN_TYPE, model_type=MODEL_TYPE,
-               embedding_model_name=EMBEDDING_MODEL_NAME)
+    launch_app(
+        model_id=MODEL_ID,
+        model_basename=MODEL_BASENAME,
+        context_window_size=CONTEXT_WINDOW_SIZE,
+        n_gpu_layers=N_GPU_LAYERS,
+        n_batch=N_BATCH,
+        max_new_tokens=MAX_NEW_TOKENS,
+        cpu_percentage=CPU_PERCENTAGE,
+        device_type=DEVICE_TYPE,
+        use_memory=USE_MEMORY,
+        system_prompt=SYSTEM_PROMPT,
+        chain_type=CHAIN_TYPE,
+        model_type=MODEL_TYPE,
+        embedding_model_name=EMBEDDING_MODEL_NAME,
+    )

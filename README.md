@@ -177,7 +177,19 @@ If using WSL then on Docker Desktop -> Settings -> Docker Engine,
 
 python -m pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/nightly/cu121
 python -m pip install openpyxl langchain-community gradio accelerate bitsandbytes kaleido python-multipart langchain chromadb langchainhub bs4 InstructorEmbedding sentence-transformers docx2txt gpt4all unstructured[pdf]
+CMAKE_ARGS="-DLLAMA_CUBLAS=on" FORCE_CMAKE=1 pip install llama-cpp-python==0.1.83 --no-cache-dir
+```
+sudo apt-get install git-lfs
+git lfs install
+sudo git clone https://huggingface.co/hkunlp/instructor-large
+```
 
+```
+import sys
+import pysqlite3
+sys.modules["sqlite3"] = sys.modules.pop("pysqlite3")
+
+```
 ### Jupyter
 
 Go [here](http://localhost:8888/lab/tree/work/customer_lifetime_value.ipynb) and run all the cells (it will stop at the "API" section at the end because
