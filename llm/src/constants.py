@@ -66,8 +66,8 @@ LAST_INGESTION_FILE = "last_ingestion_time.txt"
 DEVICE_TYPE = os.getenv("DEVICE_TYPE")
 CONTEXT_WINDOW_SIZE = os.getenv("CONTEXT_WINDOW_SIZE", 4096)
 CPU_PERCENTAGE = os.getenv("CPU_PERCENTAGE", 1)
-DB_CHUNK_SIZE = os.getenv("DB_CHUNK_SIZE", 1000)
-DB_CHUNK_OVERLAP = os.getenv("DB_CHUNK_OVERLAP", 250)
+DB_CHUNK_SIZE = os.getenv("DB_CHUNK_SIZE", 256)
+DB_CHUNK_OVERLAP = os.getenv("DB_CHUNK_OVERLAP", 64)
 N_GPU_LAYERS = os.getenv("N_GPU_LAYERS", 33)
 N_BATCH = os.getenv("N_BATCH", 256)
 MAX_NEW_TOKENS = os.getenv("MAX_NEW_TOKENS", CONTEXT_WINDOW_SIZE)
@@ -78,11 +78,15 @@ TOP_P = os.getenv("TOP_P", None)
 CHROMA_DB_HOST = os.getenv("CHROMA_DB_HOST", "chroma")
 CHROMA_DB_PORT = os.getenv("CHROMA_DB_PORT", 8000)
 CHROMA_DB_COLLECTION = os.getenv("CHROMA_DB_COLLECTION", "operations-collection")
-TOP_K_SEARCH_ARGS = os.getenv("TOP_K_SEARCH_ARGS", 4)
+TOP_K_SEARCH_ARGS = int(os.getenv("TOP_K_SEARCH_ARGS", 4))
 
-# for caching huggingface models
 os.environ["HF_HOME"] = MODELS_PATH
 os.environ["SENTENCE_TRANSFORMERS_HOME"] = MODELS_PATH
+CACHE_PATH = os.path.join(MODELS_PATH, os.environ["HF_CACHE_RELATIVE_PATH"])
+
+# # for caching huggingface models
+# os.environ["HF_HOME"] = MODELS_PATH
+# os.environ["SENTENCE_TRANSFORMERS_HOME"] = MODELS_PATH
 
 if DEVICE_TYPE is None:
     import torch  # conditionally import to avoid having to download pytorch in case only doing data ingestion in a pipeline

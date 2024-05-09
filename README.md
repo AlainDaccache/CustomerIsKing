@@ -176,7 +176,7 @@ If using WSL then on Docker Desktop -> Settings -> Docker Engine,
 ```
 
 python -m pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/nightly/cu121
-python -m pip install openpyxl langchain-community gradio accelerate bitsandbytes kaleido python-multipart langchain chromadb langchainhub bs4 InstructorEmbedding sentence-transformers docx2txt gpt4all unstructured[pdf]
+python -m pip install openpyxl langchain-community gradio accelerate bitsandbytes kaleido python-multipart langchain chromadb langchainhub bs4 InstructorEmbedding sentence-transformers docx2txt gpt4all unstructured[pdf] pysqlite3 mlflow minio boto3
 CMAKE_ARGS="-DLLAMA_CUBLAS=on" FORCE_CMAKE=1 pip install llama-cpp-python==0.1.83 --no-cache-dir
 ```
 sudo apt-get install git-lfs
@@ -189,6 +189,63 @@ import sys
 import pysqlite3
 sys.modules["sqlite3"] = sys.modules.pop("pysqlite3")
 
+```
+
+**Running the LLM from terminal, using MLFlow as registry**
+```
+python -m terminal spin_up_llm_from_mlflow \
+    --mlflow_tracking_uri http://mlflow:5001 \
+    --mlflow_registry_uri http://minio:9000 \
+    --embedding_model_uri "runs:/ebdbabdb63784baf9160a4d86ab2a371/model" \
+    --llm_model_uri "runs:/ccbe9d062d0341a1a41d42fd4d3b2457/model" \
+    --chroma_host chroma \
+    --chroma_port 8000 \
+    --collection_name operations-collection
+
+```
+
+**Using the SDK to run the LLM**
+```python
+from langchain.llms import LlamaCpp
+from langchain.chains import RetrievalQA
+from langchain.memory import ConversationBufferMemory
+from langchain.callbacks.manager import CallbackManager
+from langchain.callbacks.streaming_stdout import StreamingStdOutCallbackHandler
+import pysqlite3
+import sys
+import os
+import mlflow
+from dotenv import load_dotenv
+
+load_dotenv()
+
+mlflow.set_tracking_uri(os.environ["MLFLOW_TRACKING_URI"])
+from mlflow.pyfunc import load_model
+
+sys.modules["sqlite3"] = sys.modules.pop("pysqlite3")
+
+# print("Model URI:", model_info.model_uri)
+
+llm_run_uri = "runs:/ccbe9d062d0341a1a41d42fd4d3b2457/model"
+loaded_llm_mlflow = load_model(
+            model_uri=llm_run_uri
+        ).unwrap_python_model() # to retrieve our class
+		
+chroma_host = "chroma"
+chroma_port = "8000"
+collection_name = "operations-collection"
+embedding_model_run_id = "ebdbabdb63784baf9160a4d86ab2a371"
+
+embedding_model_uri = "runs:/{}/model".format(embedding_model_run_id)
+
+qa_retriever = loaded_llm_mlflow.init_qa_bot(
+            callback_manager=CallbackManager([StreamingStdOutCallbackHandler()]),
+            embedding_model_uri=embedding_model_uri,
+            chroma_host=chroma_host,
+            chroma_port=chroma_port,
+            collection_name=collection_name,
+        )
+print(qa_retriever)
 ```
 ### Jupyter
 

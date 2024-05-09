@@ -12,8 +12,9 @@ from constants import (
     N_GPU_LAYERS,
     CPU_PERCENTAGE,
     MODEL_TYPE,
+    CACHE_PATH,
 )
-from data_handler import ChromaCRUD
+from data_handler import ChromaCRUD, EmbeddingLoader
 from langchain.chains import RetrievalQA
 from langchain.prompts import PromptTemplate
 from langchain.memory import ConversationBufferMemory
@@ -71,7 +72,7 @@ def load_llamacpp_model(
         repo_id=model_id,
         filename=model_basename,
         resume_download=True,
-        cache_dir=MODELS_PATH,
+        cache_dir=CACHE_PATH,
     )
 
     kwargs = {
@@ -96,8 +97,6 @@ def load_llamacpp_model(
     if device_type.lower() == "cuda":
         kwargs["n_gpu_layers"] = n_gpu_layers  # set this based on your GPU
         kwargs["n_threads"] = 1  # full offloading?
-    print("HERE!!")
-    print(kwargs)
     return LlamaCpp(**kwargs)
 
 
@@ -111,11 +110,11 @@ def load_hf_causallm(
 ):
     if device_type.lower() in ["mps", "cpu"]:
         logging.info("Using LlamaTokenizer")
-        tokenizer = LlamaTokenizer.from_pretrained(model_id, cache_dir=MODELS_PATH)
-        model = LlamaForCausalLM.from_pretrained(model_id, cache_dir=MODELS_PATH)
+        tokenizer = LlamaTokenizer.from_pretrained(model_id, cache_dir=CACHE_PATH)
+        model = LlamaForCausalLM.from_pretrained(model_id, cache_dir=CACHE_PATH)
     else:
         logging.info("Using AutoModelForCausalLM for full models")
-        tokenizer = AutoTokenizer.from_pretrained(model_id, cache_dir=MODELS_PATH)
+        tokenizer = AutoTokenizer.from_pretrained(model_id, cache_dir=CACHE_PATH)
         logging.info("Tokenizer loaded")
         # TODO use bitsandbytes, dynamically find max memory etc.
         model = AutoModelForCausalLM.from_pretrained(
@@ -123,7 +122,7 @@ def load_hf_causallm(
             device_map="auto",
             torch_dtype=torch.float16,
             low_cpu_mem_usage=True,
-            cache_dir=MODELS_PATH,
+            cache_dir=CACHE_PATH,
             trust_remote_code=True,  # set these if you are using NVIDIA GPU
             load_in_4bit=True,
             bnb_4bit_quant_type="nf4",
@@ -279,46 +278,88 @@ def generate_retrieval_qa(
     return qa
 
 
-def spin_up_llm(
-    callback_manager: CallbackManager = None,
-    model_id=MODEL_ID,
-    model_basename=MODEL_BASENAME,
-    context_window_size=CONTEXT_WINDOW_SIZE,
-    n_gpu_layers=N_GPU_LAYERS,
-    n_batch=N_BATCH,
-    max_new_tokens=MAX_NEW_TOKENS,
-    cpu_percentage=CPU_PERCENTAGE,
-    device_type=DEVICE_TYPE,
-    use_memory=USE_MEMORY,
-    system_prompt=SYSTEM_PROMPT,
-    model_type=MODEL_TYPE,
-    chain_type=CHAIN_TYPE,
-    embedding_model_name: str = EMBEDDING_MODEL_NAME,
-):
-    print("Device type:", device_type)
-    retriever = ChromaCRUD().morph(into="retriever")
-    local_llm = load_model(
-        model_type=model_type,
-        model_id=model_id,
-        model_basename=model_basename,
-        n_batch=n_batch,
-        n_gpu_layers=n_gpu_layers,
-        max_new_tokens=max_new_tokens,
-        context_window_size=context_window_size,
-        cpu_percentage=cpu_percentage,
-        device_type=device_type,
-        callback_manager=callback_manager,
-    )
-    prompt = generate_prompt_template(
-        model_id=model_id, system_prompt=system_prompt, use_memory=use_memory
-    )
+class LLMLoader:
+    def load_from_mlflow(
+        self,
+        callback_manager,
+        embedding_model_uri,
+        chroma_host,
+        chroma_port,
+        collection_name,
+        mlflow_tracking_uri,
+        mlflow_registry_uri,
+        llm_model_uri,
+    ):
+        import mlflow
+        import sys
+        import pysqlite3
 
-    qa = generate_retrieval_qa(
-        llm=local_llm,
-        prompt=prompt,
-        retriever=retriever,
-        callback_manager=callback_manager,
-        use_memory=use_memory,
-        chain_type=chain_type,
-    )
-    return qa
+        sys.modules["sqlite3"] = sys.modules.pop("pysqlite3")
+
+        mlflow.set_tracking_uri(mlflow_tracking_uri)
+        mlflow.set_registry_uri(mlflow_registry_uri)
+        llm_model = mlflow.pyfunc.load_model(llm_model_uri).unwrap_python_model()
+        device_type = DEVICE_TYPE
+        qa = llm_model.init_qa_bot(
+            callback_manager=callback_manager,
+            embedding_model_uri=embedding_model_uri,
+            chroma_host=chroma_host,
+            chroma_port=chroma_port,
+            collection_name=collection_name,
+            device_type=device_type,
+        )
+        return qa
+
+    def load_from_local(
+        self,
+        embedding_model,
+        chroma_host,
+        chroma_port,
+        collection_name,
+        callback_manager: CallbackManager = None,
+        model_id=MODEL_ID,
+        model_basename=MODEL_BASENAME,
+        context_window_size=CONTEXT_WINDOW_SIZE,
+        n_gpu_layers=N_GPU_LAYERS,
+        n_batch=N_BATCH,
+        max_new_tokens=MAX_NEW_TOKENS,
+        cpu_percentage=CPU_PERCENTAGE,
+        device_type=DEVICE_TYPE,
+        use_memory=USE_MEMORY,
+        system_prompt=SYSTEM_PROMPT,
+        model_type=MODEL_TYPE,
+        chain_type=CHAIN_TYPE,
+    ):
+        print("Device type:", device_type)
+        retriever = ChromaCRUD(
+            host=chroma_host,
+            port=chroma_port,
+            collection=collection_name,
+            embedding_model=embedding_model,
+        ).morph(into="retriever")
+
+        local_llm = load_model(
+            model_type=model_type,
+            model_id=model_id,
+            model_basename=model_basename,
+            n_batch=n_batch,
+            n_gpu_layers=n_gpu_layers,
+            max_new_tokens=max_new_tokens,
+            context_window_size=context_window_size,
+            cpu_percentage=cpu_percentage,
+            device_type=device_type,
+            callback_manager=callback_manager,
+        )
+        prompt = generate_prompt_template(
+            model_id=model_id, system_prompt=system_prompt, use_memory=use_memory
+        )
+
+        qa = generate_retrieval_qa(
+            llm=local_llm,
+            prompt=prompt,
+            retriever=retriever,
+            callback_manager=callback_manager,
+            use_memory=use_memory,
+            chain_type=chain_type,
+        )
+        return qa

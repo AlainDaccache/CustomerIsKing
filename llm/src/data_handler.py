@@ -19,11 +19,13 @@ from constants import (
     EMBEDDING_MODEL_NAME,
     EMBEDDING_MODEL_PATH,
     TOP_K_SEARCH_ARGS,
+    CACHE_PATH,
     CHROMA_DB_COLLECTION,
     CHROMA_DB_HOST,
     CHROMA_DB_PORT,
     DEVICE_TYPE,
     MODELS_PATH,
+    ROOT_DIRECTORY,
 )
 import os
 import locale
@@ -39,7 +41,7 @@ from langchain.embeddings import HuggingFaceInstructEmbeddings
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.vectorstores import Chroma
 
-load_dotenv()
+load_dotenv(dotenv_path=os.path.join(ROOT_DIRECTORY, ".env"))
 
 
 class MinioClient:
@@ -168,7 +170,7 @@ class FileReader:
                 continue
 
         text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=self.db_chunk_size, chunk_overlap=self.db_chunk_overlap
+            chunk_size=256, chunk_overlap=128
         )
         texts = text_splitter.split_documents(text_documents)
 
@@ -203,7 +205,6 @@ class FileReader:
             raise Exception("Invalid ingestion mode")
         else:
             pass
-        print("HERE AND QQQQQQUEEEN!", paths)
         if paths is not None:
             file_paths = []
             for path in paths:
@@ -235,38 +236,111 @@ class FileReader:
         self.ingest_data(paths=[download_path])
 
 
+def is_present_in_cache(model_name, cache_path):
+    import re
+
+    model_name_fmt = model_name.replace("/", "--")
+    print("Model name fmt:", model_name_fmt)
+    folders_under_local_hub = [i for i in os.listdir(cache_path)]
+    for f in folders_under_local_hub:
+        print("Folder trial:", f)
+        if re.search(pattern=model_name_fmt, string=f):
+            print("Match Found!")
+            model_snapshot_path = os.path.join(cache_path, f, "snapshots")
+            print("Model Snapshot Path:", model_snapshot_path)
+            first_snapshot = os.listdir(model_snapshot_path)[0]
+            print("First snapshot:", first_snapshot)
+            exact_match = os.path.join(model_snapshot_path, first_snapshot)
+            print("Exact match:", exact_match)
+            return True, exact_match
+    return False, None
+
+
 class EmbeddingLoader:
     def __init__(self, from_local=True):
         self.from_local = from_local
 
-    def load_embedding_model(self, model_name, device_type):
+    def load_from_local(self, model_name, device_type=DEVICE_TYPE):
         print("Model name:", model_name, device_type)
-        return HuggingFaceInstructEmbeddings(
-            model_name=model_name,
-            model_kwargs={"device": device_type},
-        )
+        print("Home of HF:", os.environ["HF_HOME"])
 
-    def load_from_mlflow(self, mlflow_client, path, device_type):
+        print("Cache path:", CACHE_PATH)
+        is_match, exact_match = is_present_in_cache(
+            model_name=model_name, cache_path=CACHE_PATH
+        )
+        if is_match:
+            model_path = exact_match
+        else:
+            from huggingface_hub import hf_hub_download, snapshot_download
+
+            model_path = snapshot_download(
+                repo_id=model_name,
+                resume_download=True,
+                cache_dir=CACHE_PATH,
+            )
+        print("Before feeding:", model_path)
+        # more of a path
+        embedding = HuggingFaceInstructEmbeddings(
+            model_name=model_path, model_kwargs={"device": device_type}
+        )
+        return embedding
+
+    def load_from_mlflow(
+        self,
+        mlflow_tracking_uri,
+        mlflow_registry_uri,
+        embedding_model_uri,
+        device_type=DEVICE_TYPE,
+    ):
         # TODO
-        pass
+        import mlflow
+        import sys
+        import pysqlite3
+
+        sys.modules["sqlite3"] = sys.modules.pop("pysqlite3")
+        mlflow.set_tracking_uri(mlflow_tracking_uri)
+        mlflow.set_registry_uri(mlflow_registry_uri)
+        embedding_model_mlflow = mlflow.pyfunc.load_model(
+            embedding_model_uri
+        ).unwrap_python_model()
+        embedding_model_lambda = embedding_model_mlflow.model_lambda
+        embedding_model = embedding_model_lambda(device_type=device_type)
+        return embedding_model
 
 
 class ChromaCRUD:
     def __init__(
         self,
+        embedding_model: HuggingFaceInstructEmbeddings = None,
         host=CHROMA_DB_HOST,
         port=CHROMA_DB_PORT,
         collection=CHROMA_DB_COLLECTION,
-        model_name=EMBEDDING_MODEL_NAME,
         device_type=DEVICE_TYPE,
     ):
-
+        if embedding_model is None:
+            print(
+                f"Embedding Model fed to ChromaCRUD is None. Defaulting to {EMBEDDING_MODEL_NAME}"
+            )
+            embedding_model = HuggingFaceInstructEmbeddings(
+                model_name=EMBEDDING_MODEL_NAME, model_kwargs={"device": device_type}
+            )
         self.client = self._get_chroma_client(host=host, port=port)
         self.collection_name = collection
-
-        self.embedding_function = EmbeddingLoader().load_embedding_model(
-            model_name=model_name, device_type=device_type
+        print("Collection name:", self.collection_name)
+        self.embedding_function = embedding_model
+        self.chroma = Chroma(
+            client=self.client,
+            collection_name=self.collection_name,
+            embedding_function=self.embedding_function,
         )
+
+        print(
+            "Client Collection Inits:", self.client.get_collection(self.collection_name)
+        )
+        print("Mongo Collection Inits:", self.chroma._collection)
+
+    def reset(self):
+        self.chroma.delete_collection()
         self.chroma = Chroma(
             client=self.client,
             collection_name=self.collection_name,
@@ -285,6 +359,7 @@ class ChromaCRUD:
         )
 
     def add_documents(self, texts):
+        print("Client Collections:", self.client.get_collection(self.collection_name))
         self.chroma.add_documents(documents=texts)
 
     def update_document(self, document_id, updated_text):

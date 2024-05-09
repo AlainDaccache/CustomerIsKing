@@ -1,45 +1,15 @@
 from constants import *
 import argparse
-from data_handler import FileReader, ChromaCRUD
-from model_handler import spin_up_llm
+from data_handler import FileReader, ChromaCRUD, EmbeddingLoader
+from model_handler import LLMLoader
 from langchain.callbacks.manager import CallbackManager
 from langchain.callbacks.streaming_stdout import StreamingStdOutCallbackHandler
 
 import time
 
 
-def launch_terminal(
-    model_id=MODEL_ID,
-    model_basename=MODEL_BASENAME,
-    context_window_size=CONTEXT_WINDOW_SIZE,
-    n_gpu_layers=N_GPU_LAYERS,
-    n_batch=N_BATCH,
-    max_new_tokens=MAX_NEW_TOKENS,
-    cpu_percentage=CPU_PERCENTAGE,
-    device_type=DEVICE_TYPE,
-    use_memory=USE_MEMORY,
-    system_prompt=SYSTEM_PROMPT,
-    model_type=MODEL_TYPE,
-    chain_type=CHAIN_TYPE,
-    embedding_model_name: str = EMBEDDING_MODEL_NAME,
-):
-    callback_manager = CallbackManager([StreamingStdOutCallbackHandler()])
+def launch_terminal(qa):
 
-    qa = spin_up_llm(
-        model_type=model_type,
-        model_id=model_id,
-        model_basename=model_basename,
-        context_window_size=context_window_size,
-        n_gpu_layers=n_gpu_layers,
-        n_batch=n_batch,
-        max_new_tokens=max_new_tokens,
-        cpu_percentage=cpu_percentage,
-        device_type=device_type,
-        use_memory=use_memory,
-        system_prompt=system_prompt,
-        chain_type=chain_type,
-        callback_manager=callback_manager,
-    )
     while True:
         query = input("\nEnter a query: ")
         if query == "exit":
@@ -62,13 +32,17 @@ def launch_terminal(
 
 
 if __name__ == "__main__":
+    from dotenv import load_dotenv
+
+    load_dotenv(dotenv_path=os.path.join(ROOT_DIRECTORY, ".env"))
+    print(os.environ["HF_HOME"])
     parser = argparse.ArgumentParser(
         description="Command-line tool for LLM and data ingestion"
     )
     subparsers = parser.add_subparsers(dest="command")
 
     # Command to spin up LLM
-    llm_parser = subparsers.add_parser("spin_up_llm", help="Spin up an LLM")
+    llm_parser = subparsers.add_parser("spin_up_llm_from_local", help="Spin up an LLM")
     llm_parser.add_argument(
         "--model_type",
         default=MODEL_TYPE,
@@ -128,31 +102,48 @@ if __name__ == "__main__":
     llm_parser.add_argument(
         "--chain_type", default=CHAIN_TYPE, help=f"Chain type (default: {CHAIN_TYPE})"
     )
-
-    # Command to ingest data
-    ingest_data_from_paths_parser = subparsers.add_parser(
-        "ingest_data_from_paths", help="Ingest data"
+    llm_parser.add_argument(
+        "--chroma_host", type=str, help="Chroma host address", default=CHROMA_DB_HOST
     )
-    ingest_data_from_paths_parser.add_argument(
-        "paths", nargs="+", help="List of file paths or folder path"
+    llm_parser.add_argument(
+        "--chroma_port", type=int, help="Chroma port number", default=CHROMA_DB_PORT
     )
-    ingest_data_from_paths_parser.add_argument(
-        "--db_chunk_size",
-        type=int,
-        default=DB_CHUNK_SIZE,
-        help=f"Database chunk size (default: {DB_CHUNK_SIZE})",
+    llm_parser.add_argument(
+        "--chroma_collection_name",
+        type=str,
+        help="Name of the collection",
+        default=CHROMA_DB_COLLECTION,
     )
-    ingest_data_from_paths_parser.add_argument(
-        "--db_chunk_overlap",
-        type=int,
-        default=DB_CHUNK_OVERLAP,
-        help=f"Database chunk overlap (default: {DB_CHUNK_OVERLAP})",
-    )
-    ingest_data_from_paths_parser.add_argument(
+    llm_parser.add_argument(
         "--embedding_model_name",
         default=EMBEDDING_MODEL_NAME,
         help=f"Embedding model name (default: {EMBEDDING_MODEL_NAME})",
     )
+
+    # # Command to ingest data
+    # ingest_data_from_paths_parser = subparsers.add_parser(
+    #     "ingest_data_from_paths", help="Ingest data"
+    # )
+    # ingest_data_from_paths_parser.add_argument(
+    #     "paths", nargs="+", help="List of file paths or folder path"
+    # )
+    # ingest_data_from_paths_parser.add_argument(
+    #     "--db_chunk_size",
+    #     type=int,
+    #     default=DB_CHUNK_SIZE,
+    #     help=f"Database chunk size (default: {DB_CHUNK_SIZE})",
+    # )
+    # ingest_data_from_paths_parser.add_argument(
+    #     "--db_chunk_overlap",
+    #     type=int,
+    #     default=DB_CHUNK_OVERLAP,
+    #     help=f"Database chunk overlap (default: {DB_CHUNK_OVERLAP})",
+    # )
+    # ingest_data_from_paths_parser.add_argument(
+    #     "--embedding_model_name",
+    #     default=EMBEDDING_MODEL_NAME,
+    #     help=f"Embedding model name (default: {EMBEDDING_MODEL_NAME})",
+    # )
 
     ingest_data_from_mode_parser = subparsers.add_parser(
         "ingest_data_from_mode", help="Ingest data"
@@ -181,35 +172,137 @@ if __name__ == "__main__":
         help=f"Embedding model name (default: {EMBEDDING_MODEL_NAME})",
     )
 
-    ingest_data_from_minio_parser = subparsers.add_parser(
-        "ingest_data_from_minio", help="Ingest data from Minio bucket"
+    ingest_data_from_mode_parser.add_argument(
+        "--mlflow_tracking_uri",
+        type=str,
+        help="MLFlow tracking URI",
+        default=os.getenv("MLFLOW_TRACKING_URI"),
     )
-    # Add arguments for ingesting data from Minio bucket
-    ingest_data_from_minio_parser.add_argument(
-        "--endpoint_url", help="Minio endpoint URL"
+    ingest_data_from_mode_parser.add_argument(
+        "--mlflow_registry_uri",
+        type=str,
+        help="MLFlow registry URI",
+        default=os.getenv("MLFLOW_S3_ENDPOINT_URL"),
     )
-    ingest_data_from_minio_parser.add_argument("--access_key", help="Minio access key")
-    ingest_data_from_minio_parser.add_argument("--secret_key", help="Minio secret key")
-    ingest_data_from_minio_parser.add_argument(
-        "--bucket_name", help="Minio bucket name"
+    ingest_data_from_mode_parser.add_argument(
+        "--embedding_model_uri",
+        type=str,
+        help="URI of the embedding model",
+        default=None,
     )
-    ingest_data_from_minio_parser.add_argument(
-        "--object_prefix", help="Prefix for objects in Minio bucket"
+    ingest_data_from_mode_parser.add_argument(
+        "--chroma_host", default=CHROMA_DB_HOST, type=str, help="Chroma host address"
+    )
+    ingest_data_from_mode_parser.add_argument(
+        "--chroma_port", default=CHROMA_DB_PORT, type=int, help="Chroma port number"
+    )
+    ingest_data_from_mode_parser.add_argument(
+        "--chroma_collection_name",
+        default=CHROMA_DB_COLLECTION,
+        type=str,
+        help="Name of the collection",
+    )
+    ingest_data_from_mode_parser.add_argument(
+        "--minio_access_key", help="Minio access key", default=None
+    )
+    ingest_data_from_mode_parser.add_argument(
+        "--minio_secret_key", help="Minio secret key", default=None
+    )
+    ingest_data_from_mode_parser.add_argument(
+        "--minio_bucket_name", help="Minio bucket name", default=None
+    )
+    ingest_data_from_mode_parser.add_argument(
+        "--minio_object_prefix", help="Prefix for objects in Minio bucket", default=None
+    )
+    ingest_data_from_mode_parser.add_argument(
+        "--embeddings_model_source", help="Embeddings Model Source", default="local"
+    )
+    ingest_data_from_mode_parser.add_argument(
+        "--data_source", help="Data Source", default="local"
+    )
+
+    # Command to spin up LLM
+    spin_up_llm_from_mlflow_parser = subparsers.add_parser(
+        "spin_up_llm_from_mlflow", help="Spin up an LLM from MLFlow"
+    )
+    spin_up_llm_from_mlflow_parser.add_argument(
+        "--mlflow_tracking_uri", type=str, help="MLFlow tracking URI"
+    )
+    spin_up_llm_from_mlflow_parser.add_argument(
+        "--mlflow_registry_uri", type=str, help="MLFlow registry URI"
+    )
+    spin_up_llm_from_mlflow_parser.add_argument(
+        "--llm_model_uri", type=str, help="URI of the LLM model in MLFlow"
+    )
+    spin_up_llm_from_mlflow_parser.add_argument(
+        "--embedding_model_uri", type=str, help="URI of the embedding model"
+    )
+    spin_up_llm_from_mlflow_parser.add_argument(
+        "--chroma_host", type=str, help="Chroma host address"
+    )
+    spin_up_llm_from_mlflow_parser.add_argument(
+        "--chroma_port", type=int, help="Chroma port number"
+    )
+    spin_up_llm_from_mlflow_parser.add_argument(
+        "--chroma_collection_name", type=str, help="Name of the collection"
+    )
+
+    # Command to register embedding model
+    register_embedding_parser = subparsers.add_parser(
+        "register_embedding_model", help="Register an embedding model"
+    )
+    register_embedding_parser.add_argument(
+        "--hugging_face_repo_id",
+        help="Hugging Face repository ID",
+        default=EMBEDDING_MODEL_NAME,
+    )
+    register_embedding_parser.add_argument(
+        "--hugging_face_filename", help="Hugging Face filename", default=None
+    )
+
+    # Command to register LLM
+    register_llm_parser = subparsers.add_parser("register_llm", help="Register an LLM")
+    register_llm_parser.add_argument(
+        "--hugging_face_repo_id",
+        help="Hugging Face repository ID",
+        default=MODEL_ID,
+    )
+    register_llm_parser.add_argument(
+        "--hugging_face_filename", help="Hugging Face filename", default=MODEL_BASENAME
     )
 
     args = parser.parse_args()
 
-    if args.command == "spin_up_llm":
-        if args.from_mlflow:
-            import mlflow
+    if args.command == "spin_up_llm_from_mlflow":
+        from model_handler import LLMLoader
 
-            run_id = args.run_id
-            model_path_from_artifact = args.model_path
-            model = mlflow.pyfunc.load_model(
-                f"runs:/{run_id}/{model_path_from_artifact}"
-            )
+        print("ARGUMENTS:")
+        print(args)
+        callback_manager = CallbackManager([StreamingStdOutCallbackHandler()])
+        qa = LLMLoader().load_from_mlflow(
+            callback_manager=callback_manager,
+            embedding_model_uri=args.embedding_model_uri,
+            chroma_host=args.chroma_host,
+            chroma_port=args.chroma_port,
+            collection_name=args.chroma_collection_name,
+            mlflow_tracking_uri=args.mlflow_tracking_uri,
+            mlflow_registry_uri=args.mlflow_registry_uri,
+            llm_model_uri=args.llm_model_uri,
+        )
+        launch_terminal(qa=qa)
 
-        launch_terminal(
+    if args.command == "spin_up_llm_from_local":
+        print("ARGUMENTS:")
+        print(args)
+        callback_manager = CallbackManager([StreamingStdOutCallbackHandler()])
+        embedding_model = EmbeddingLoader().load_from_local(
+            model_name=args.embedding_model_name
+        )
+        qa = LLMLoader().load_from_local(
+            embedding_model=embedding_model,
+            chroma_host=args.chroma_host,
+            chroma_port=args.chroma_port,
+            collection_name=args.chroma_collection_name,
             model_type=args.model_type,
             model_id=args.model_id,
             model_basename=args.model_basename,
@@ -218,53 +311,92 @@ if __name__ == "__main__":
             n_batch=args.n_batch,
             max_new_tokens=args.max_new_tokens,
             cpu_percentage=args.cpu_percentage,
-            device_type=args.device_type,
             use_memory=args.use_memory,
             system_prompt=args.system_prompt,
             chain_type=args.chain_type,
+            callback_manager=callback_manager,
         )
-    elif args.command == "ingest_data_from_paths":
-        vector_client = ChromaCRUD()
-        file_reader = FileReader(vector_client=vector_client)
-        file_reader.ingest_data(paths=args.paths)
+        print("QA:", qa)
+        launch_terminal(qa=qa)
 
     elif args.command == "ingest_data_from_mode":
-        vector_client = ChromaCRUD()
-        file_reader = FileReader(vector_client=vector_client)
+        print("ARGUMENTS:")
+        print(args)
+        if args.embeddings_model_source == "local":
+            assert args.embedding_model_name is not None
+            embedding_model = EmbeddingLoader().load_from_local(
+                model_name=args.embedding_model_name
+            )
+        elif args.embeddings_model_source == "mlflow":
+            assert args.embedding_model_uri is not None
+            assert args.mlflow_registry_uri is not None
+            assert args.mlflow_tracking_uri is not None
+            embedding_model = EmbeddingLoader().load_from_mlflow(
+                mlflow_tracking_uri=args.mlflow_tracking_uri,
+                mlflow_registry_uri=args.mlflow_registry_uri,
+                embedding_model_uri=args.embedding_model_uri,
+            )
+
+        vector_client = ChromaCRUD(
+            embedding_model=embedding_model,
+            host=args.chroma_host,
+            port=args.chroma_port,
+            collection=args.chroma_collection_name,
+        )
 
         if not (args.full ^ args.incremental):
             parser.error("Please specify either --full or --incremental")
 
         mode = "full" if args.full else "incremental"
 
-        collection_name = args.collection_name
+        collection_name = args.chroma_collection_name
         if mode == "full":
-            if not vector_client.collection_exists(collection_name):
-                # If collection doesn't exist, add it
-                vector_client.create_collection(collection_name)
-            else:
-                vector_client.delete_collection(collection_name)
-        file_reader.ingest_data(mode="full")
+            vector_client.reset()
 
-    elif args.command == "ingest_data_from_minio":
-        # Handle ingesting data from Minio bucket
-        vector_client = ChromaCRUD()
+            # vector_client.client.get_or_create_collection(
+            #     name=args.chroma_collection_name, embedding_function=embedding_model
+            # )
+
         file_reader = FileReader(vector_client=vector_client)
-        from data_handler import MinioClient
 
-        minio_client = MinioClient(
-            endpoint_url=args.endpoint_url,
-            access_key=args.access_key,
-            secret_key=args.secret_key,
-        )
-        file_reader.ingest_from_blob(
-            blob_client=minio_client,
-            bucket_name=args.bucket_name,
-            download_path=os.path.join(DATA_FOLDER_PATH, args.bucket_name),
-        )
+        if args.data_source == "minio":
+            # Handle ingesting data from Minio bucket
+            from data_handler import MinioClient
+
+            minio_host_port = args.mlflow_registry_uri.split("http://")[-1]
+            print("Minio Host/Port:", minio_host_port)
+            minio_client = MinioClient(
+                endpoint_url=minio_host_port,
+                access_key=args.minio_access_key,
+                secret_key=args.minio_secret_key,
+            )
+            file_reader.ingest_from_blob(
+                blob_client=minio_client,
+                bucket_name=args.minio_bucket_name,
+                download_path=os.path.join(DATA_FOLDER_PATH, args.minio_bucket_name),
+            )
+        elif args.data_source == "local":
+            file_reader.ingest_data(mode="full")
+        else:
+            raise Exception()
+
     elif args.command == "register_embedding_model":
-        mlflow_client = None
-        embedding_model_name = args.model_name
-        device_type = args.device_type
+        print("ARGUMENTS:")
+        print(args)
+        from llm_embedding_pipeline import download_and_register_embeddings
+
+        download_and_register_embeddings(
+            hugging_face_repo_id=args.hugging_face_repo_id,
+            hugging_face_filename=args.hugging_face_filename,
+        )
+    elif args.command == "register_llm":
+        print("ARGUMENTS:")
+        print(args)
+        from llm_embedding_pipeline import download_and_register_llm
+
+        download_and_register_llm(
+            hugging_face_repo_id=args.hugging_face_repo_id,
+            hugging_face_filename=args.hugging_face_filename,
+        )
     else:
         print("Invalid command")

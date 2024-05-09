@@ -17,8 +17,13 @@ def download_and_register_llm(
     hugging_face_filename=None,
     **kwargs,
 ):
-    os.environ["HF_HOME"] = MODELS_PATH
-    os.environ["SENTENCE_TRANSFORMERS_HOME"] = MODELS_PATH
+    print("Hugging Face Repo ID:", hugging_face_repo_id)
+    print("Hugging Face Filename:", hugging_face_filename)
+    print("Keyword Args:", kwargs)
+    from dotenv import load_dotenv
+
+    load_dotenv(dotenv_path=os.path.join(ROOT_DIRECTORY, ".env"))
+    print(f"Downloading model {hugging_face_repo_id} from Hugging Face Hub!")
 
     if hugging_face_filename:
         model_path = hf_hub_download(
@@ -34,7 +39,7 @@ def download_and_register_llm(
             # cache_dir=local_models_dir,
         )
     print(f"Downloaded model {hugging_face_repo_id} from Hugging Face Hub!")
-
+    print("Model path is:", model_path)
     # Because callback manager is fed into
     if not kwargs:
         kwargs = {
@@ -63,6 +68,7 @@ def download_and_register_llm(
         from langchain.memory import ConversationBufferMemory
         from langchain.callbacks.manager import CallbackManager
         from langchain.callbacks.streaming_stdout import StreamingStdOutCallbackHandler
+        from langchain.prompts import PromptTemplate
 
         class LLMWrapper(mlflow.pyfunc.PythonModel):
             """Model object will be acccessible via model attr"""
@@ -76,7 +82,7 @@ def download_and_register_llm(
                     instruction = """
                         Context: {context} \n
                         User: {question}"""
-                return f"""
+                prompt_template = f"""
                     [INST] 
                         <<SYS>>
                         {system_prompt}
@@ -84,6 +90,11 @@ def download_and_register_llm(
                         {instruction}
                     [/INST]
                 """
+                prompt = PromptTemplate(
+                    input_variables=["history", "context", "question"],
+                    template=prompt_template,
+                )
+                return prompt
 
             def generate_retrieval_qa(
                 self,
@@ -94,22 +105,29 @@ def download_and_register_llm(
                 callback_manager,
                 chain_type,
             ):
+
                 prompt = self.gen_prompt_template(
                     use_memory=use_memory, system_prompt=system_prompt
                 )
+                print("Prompt:", prompt)
                 chain_type_kwargs = {"prompt": prompt}
                 if use_memory:
                     chain_type_kwargs["memory"] = ConversationBufferMemory(
                         input_key="question", memory_key="history"
                     )
-
+                print("DEBUG:")
+                print(llm)
+                print(chain_type)
+                print(retriever)
+                print(callback_manager)
+                print(chain_type_kwargs)
                 qa = RetrievalQA.from_chain_type(
                     llm=llm,
                     chain_type=chain_type,
                     retriever=retriever,
                     return_source_documents=True,
                     # verbose=True,
-                    callbacks=[callback_manager],
+                    callbacks=callback_manager,
                     chain_type_kwargs=chain_type_kwargs,
                 )
                 return qa
@@ -147,16 +165,25 @@ def download_and_register_llm(
                 )
 
             def get_retriever(
-                self, embedding_model_uri, chroma_host, chroma_port, collection_name
+                self,
+                embedding_model_uri,
+                chroma_host,
+                chroma_port,
+                collection_name,
+                device_type,
             ):
                 from langchain.vectorstores import Chroma
                 from mlflow.pyfunc import load_model
                 from chromadb import HttpClient
                 from chromadb.config import Settings
 
-                embedding_mlflow = load_model(model_uri=embedding_model_uri)
+                embedding_mlflow = load_model(
+                    model_uri=embedding_model_uri
+                ).unwrap_python_model()
 
-                embedding_function = embedding_mlflow.model
+                embedding_function = embedding_mlflow.model_lambda(
+                    device_type=device_type
+                )
                 client = HttpClient(
                     host=chroma_host,
                     port=chroma_port,
@@ -181,18 +208,25 @@ def download_and_register_llm(
                 chroma_host,
                 chroma_port,
                 collection_name,
+                device_type,
+                use_memory=True,
             ):
                 retriever = self.get_retriever(
                     chroma_host=chroma_host,
                     chroma_port=chroma_port,
                     embedding_model_uri=embedding_model_uri,
                     collection_name=collection_name,
+                    device_type=device_type,
                 )
                 self.callback_manager = callback_manager
                 self.retriever = retriever
                 self.qa_retriever = self.qa_retriever_lambda(
-                    callback_manager=callback_manager, retriever=retriever
+                    callback_manager=callback_manager,
+                    retriever=retriever,
+                    use_memory=use_memory,
                 )
+
+                return self.qa_retriever
 
             def generate_tokens_queue(self, input):
                 return "Great Success!"
@@ -232,7 +266,9 @@ def download_and_register_llm(
         }
 
         conda_spec_path = os.path.join(ROOT_DIRECTORY, "conda.yml")
-        model_info = mlflow.pyfunc.log_model(
+        from mlflow.pyfunc import log_model
+
+        model_info = log_model(
             artifact_path="model",
             python_model=LLMWrapper(),
             artifacts=artifacts,
@@ -243,21 +279,40 @@ def download_and_register_llm(
             conda_env=conda_spec_path,
             model_config=model_config,
         )
-        chroma_host = "chroma"
-        chroma_port = "8000"
-        collection_name = "operations-collection"
-        embedding_model_run_id = "ebdbabdb63784baf9160a4d86ab2a371"
-        embedding_model_uri = "runs:/{}/model".format(embedding_model_run_id)
 
-        loaded_llm_mlflow = load_model(model_uri=model_info.model_uri)
-        qa_retriever = loaded_llm_mlflow.init_qa_bot(
-            callback_manager=CallbackManager([StreamingStdOutCallbackHandler()]),
-            embedding_model_uri=embedding_model_uri,
-            chroma_host=chroma_host,
-            chroma_port=chroma_port,
-            collection_name=collection_name,
-        )
-        print(qa_retriever)
+        # from langchain.llms import LlamaCpp
+        # from langchain.chains import RetrievalQA
+        # from langchain.memory import ConversationBufferMemory
+        # from langchain.callbacks.manager import CallbackManager
+        # from langchain.callbacks.streaming_stdout import StreamingStdOutCallbackHandler
+        # import pysqlite3
+        # import sys
+
+        # sys.modules["sqlite3"] = sys.modules.pop("pysqlite3")
+        # # llm_run_uri = "runs:/26ea8cf27f684bd395198ad4d0e2eb29/model"
+        # llm_run_uri = model_info.model_uri
+        # print("Model URI:", llm_run_uri)
+
+        # loaded_llm_mlflow = load_model(
+        #     model_uri=llm_run_uri
+        # ).unwrap_python_model()  # to retrieve our class
+
+        # chroma_host = "chroma"
+        # chroma_port = "8000"
+        # collection_name = "operations-collection"
+        # embedding_model_run_id = "ebdbabdb63784baf9160a4d86ab2a371"
+
+        # embedding_model_uri = "runs:/{}/model".format(embedding_model_run_id)
+
+        # qa_retriever = loaded_llm_mlflow.init_qa_bot(
+        #     callback_manager=CallbackManager([StreamingStdOutCallbackHandler()]),
+        #     embedding_model_uri=embedding_model_uri,
+        #     chroma_host=chroma_host,
+        #     chroma_port=chroma_port,
+        #     collection_name=collection_name,
+        #     device_type=
+        # )
+        # # print(qa_retriever)
 
 
 def download_and_register_embeddings(
@@ -291,6 +346,9 @@ def download_and_register_embeddings(
     mlflow_endpoint_url = os.getenv("MLFLOW_TRACKING_URI")
     print("MLFlow Endpoint URL:", mlflow_endpoint_url)
     mlflow.set_tracking_uri(mlflow_endpoint_url)
+    from dotenv import load_dotenv
+
+    load_dotenv()
     experiment_name = "embedding_models"
     if not mlflow.get_experiment_by_name(experiment_name):
         mlflow.create_experiment(name=experiment_name)
@@ -309,11 +367,9 @@ def download_and_register_embeddings(
                 print("Context Model Config:", context.model_config)
                 model_path = context.artifacts["model_path"]
                 print("Model Path:", model_path)
-                import torch
-
-                device_type = "cuda" if torch.cuda.is_available() else "cpu"
-                print("Device Type:", device_type)
-                self.model = HuggingFaceInstructEmbeddings(
+                # device_type = "cuda" if torch.cuda.is_available() else "cpu"
+                # print("Device Type:", device_type)
+                self.model_lambda = lambda device_type: HuggingFaceInstructEmbeddings(
                     model_name=model_path,
                     model_kwargs={"device": device_type},
                 )
@@ -335,15 +391,22 @@ def download_and_register_embeddings(
         print(loaded_model)
 
 
-download_and_register_llm(
-    hugging_face_repo_id="TheBloke/Llama-2-7b-Chat-GGUF",
-    hugging_face_filename="llama-2-7b-chat.Q4_K_M.gguf",
-)
+# download_and_register_llm(
+#     hugging_face_repo_id="TheBloke/Llama-2-7b-Chat-GGUF",
+#     hugging_face_filename="llama-2-7b-chat.Q4_K_M.gguf",
+# )
 
+# download_and_register_llm(hugging_face_repo_id=None, hugging_face_filename=None)
 
 # download_and_register_embeddings(
 #     hugging_face_repo_id="hkunlp/instructor-large",
 # )
+
+# download_and_register_llm(
+#     hugging_face_repo_id="TheBloke/TinyLlama-1.1B-Chat-v0.3-GGUF",
+#     hugging_face_filename="tinyllama-1.1b-chat-v0.3.Q4_K_M.gguf",
+# )
+
 
 # import mlflow
 # import os
