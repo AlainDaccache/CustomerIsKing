@@ -14,6 +14,8 @@ import os
 
 def download_and_register_llm(
     hugging_face_repo_id,
+    mlflow_registry_uri,
+    mlflow_tracking_uri,
     hugging_face_filename=None,
     **kwargs,
 ):
@@ -277,6 +279,7 @@ def download_and_register_llm(
                 "input_text": "How many sales have we made in the past year in the UK?"
             },
             conda_env=conda_spec_path,
+            # code_paths=[os.path.join(ROOT_DIRECTORY, "requirements.txt")],
             model_config=model_config,
         )
 
@@ -317,6 +320,8 @@ def download_and_register_llm(
 
 def download_and_register_embeddings(
     hugging_face_repo_id,
+    mlflow_registry_uri,
+    mlflow_tracking_uri,
     hugging_face_filename=None,
 ):
     """
@@ -382,6 +387,7 @@ def download_and_register_embeddings(
             artifact_path=logged_model_path,  # logged_model_path,
             python_model=EmbeddingWrapper(),
             artifacts=artifacts,
+            # code_paths=[os.path.join(ROOT_DIRECTORY, "requirements.txt")],
             conda_env=conda_spec_path,
         )
         # run_id = mlflow.active_run().info.run_id

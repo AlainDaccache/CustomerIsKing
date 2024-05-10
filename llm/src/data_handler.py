@@ -169,9 +169,14 @@ class FileReader:
                 print(f"Exception with file '{file_path}': {str(e)}")
                 continue
 
+        # FIXME current bug on chunk overlap greater than size
         text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=256, chunk_overlap=128
+            chunk_size=512, chunk_overlap=256
         )
+        # text_splitter = RecursiveCharacterTextSplitter(
+        #     chunk_size=DB_CHUNK_SIZE,
+        #     chunk_overlap=DB_CHUNK_OVERLAP,
+        # )
         texts = text_splitter.split_documents(text_documents)
 
         print("Loader Class:", loader_class)
@@ -214,10 +219,10 @@ class FileReader:
                     file_paths += self.get_paths_from_folder(folder=path)
                 else:
                     file_paths.append(path)
-
-        print("File paths:\n", file_paths)
+        unique_file_paths = list(set(file_paths))
+        print("File paths:\n", unique_file_paths)
         if len(file_paths):
-            self.ingest(file_paths=file_paths)
+            self.ingest(file_paths=unique_file_paths)
 
     # TODO abstract away, make oop design e.g. for incremental load interface
     def ingest_from_blob(

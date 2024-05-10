@@ -10,7 +10,7 @@ llm/src/last_ingestion_time.txt
 llm/DB/
 llm/models/
 llm/src/models
-
+chroma/
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

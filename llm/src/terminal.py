@@ -388,6 +388,8 @@ if __name__ == "__main__":
         download_and_register_embeddings(
             hugging_face_repo_id=args.hugging_face_repo_id,
             hugging_face_filename=args.hugging_face_filename,
+            mlflow_registry_uri=args.mlflow_registry_uri,
+            mlflow_tracking_uri=args.mlflow_tracking_uri,
         )
     elif args.command == "register_llm":
         print("ARGUMENTS:")
@@ -397,6 +399,8 @@ if __name__ == "__main__":
         download_and_register_llm(
             hugging_face_repo_id=args.hugging_face_repo_id,
             hugging_face_filename=args.hugging_face_filename,
+            mlflow_registry_uri=args.mlflow_registry_uri,
+            mlflow_tracking_uri=args.mlflow_tracking_uri,
         )
     else:
         print("Invalid command")

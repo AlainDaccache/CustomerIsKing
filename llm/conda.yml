@@ -1,28 +1,12 @@
 channels:
-  - conda-forge
-variables:
-  - CMAKE_ARGS: -DLLAMA_CUBLAS=on
+- conda-forge
+python: 3.10.14
+build_dependencies:
+- pip==24.0
+- setuptools==69.5.1
+- wheel==0.43.0
 dependencies:
-  - python=3.10.14
-  - pip:
-    - llama-cpp-python
-    - torch==1.10.0 --index-url https://download.pytorch.org/whl/nightly/cu121
-    - torchvision==0.11.1 --index-url https://download.pytorch.org/whl/nightly/cu121
-    - torchaudio==0.10.0 --index-url https://download.pytorch.org/whl/nightly/cu121
-    - openpyxl
-    - langchain-community
-    - gradio
-    - accelerate
-    - bitsandbytes
-    - kaleido
-    - python-multipart
-    - langchain
-    - chromadb
-    - langchainhub
-    - beautifulsoup4
-    - instructor-embedding
-    - sentence-transformers
-    - docx2txt
-    - gpt4all
-    - unstructured[pdf]
+- python=3.10.14
+- -r requirements.txt
 name: mlflow-env
+# CMAKE_ARGS="-DLLAMA_CUBLAS=on" conda env create -f conda.yaml
