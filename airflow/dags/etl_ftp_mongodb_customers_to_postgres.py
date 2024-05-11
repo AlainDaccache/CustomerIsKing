@@ -31,12 +31,6 @@ POSTGRES_ITEMS_DIM_NAME = "DIM_ITEMS"
 POSTGRES_TRANSACTIONS_FACT_NAME = "FACT_TRANSACTIONS"
 
 
-FILENAMES_HTTP = [
-    "HR-Guide_Policy-and-Procedure-Template.pdf",
-    "SOP-Cash-Management-POS.pdf",
-]
-FILE_DOWNLOADS_URLS = [f"http://fileserver:8080/download/{f}" for f in FILENAMES_HTTP]
-
 MONGO_DB_CONN_ID = "ecom_mongodb"
 MONGODB_DB_NAME = "my_ecom_mongodb"
 MONGO_DB_COLLECTION_NAME = "customer-transactions"
@@ -68,9 +62,17 @@ def s3_to_transact_df(bucket_name):
 
 #################################################################################
 
+# from pathlib import Path
 
-def download_files_to_local(urls, filenames):
-    for url, filename in zip(urls, filenames):
+
+def download_files_to_local():
+
+    base_url = "http://fileserver:8080"
+    FILENAMES = requests.get(f"{base_url}/files").json()["files"]
+    # FILENAMES = [Path(f).stem for f in fn_response]
+    FILE_DOWNLOADS_URLS = [f"{base_url}/download/{f}" for f in FILENAMES]
+
+    for url, filename in zip(FILE_DOWNLOADS_URLS, FILENAMES):
         try:
             response = requests.get(url)
             # Save the downloaded file locally

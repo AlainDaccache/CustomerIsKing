@@ -17,14 +17,17 @@ import os
 
 # For the HR pdf
 doc_urls = [
-    "https://communityfoundations.ca/wp-content/uploads/2021/08/HR-Guide_-Policy-and-Procedure-Template.pdf",
-    "https://www.ucalgary.ca/finance/sites/default/files/teams/5/fo-ar-cash-management-procedures.pdf",
+    "https://www.cgi.com/sites/default/files/2021-03/cgi-hr-and-payroll-bps-fact-sheet.pdf",
+    "https://www.cgi.com/sites/default/files/2019-01/cgi-cloud-native-solutions.pdf",
+    "https://www.cgi.com/sites/default/files/2021-11/customer_relationship_management_solutions.pdf",
+    "https://www.cgi.com/sites/default/files/2022-09/cgi-brochure-canada-data_analytics-ai_offerings.pdf",
+    "https://www.cgi.com/sites/default/files/2019-08/artificial_intelligence_in_the_making_a_pathway_to_success_final.pdf",
+    "https://www.cgi.com/sites/default/files/2022-04/cgi_conversational_ai_practice_brochure.pdf",
+    "https://www.cgi.com/sites/default/files/2022-03/cgi_cgi_advanced_analytics_infographic.pdf",
+    "https://www.cgi.com/sites/default/files/2021-10/cgi-advantage-intelligence-suite_1.pdf",
 ]
-doc_filenames = [
-    "HR-Guide_Policy-and-Procedure-Template.pdf",
-    "SOP-Cash-Management-POS.pdf",
-]
-
+doc_filenames = [url.split("/")[-1] for url in doc_urls]
+print("Doc Filenames:", doc_filenames)
 # f
 destination_file_path = "customer_transactions.json"
 

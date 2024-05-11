@@ -18,18 +18,27 @@ ENV MLFLOW_ARTIFACT_DIR_NAME=artifacts
 ENV MLFLOW_S3_ENDPOINT_URL=http://minio:9000
 ENV MLFLOW_TRACKING_URI=http://mlflow:5001
 
-RUN echo ${LLM_RUN_ID:-b7370963}
+RUN apt-get update && \
+    apt-get install -y build-essential && \
+    apt-get install -y libgl1 && \
+    apt-get install -y poppler-utils && \
+    apt-get install -y libcairo2-dev pkg-config python3-dev && \
+    apt-get install -y libtesseract-dev && \
+    apt-get install -y tesseract-ocr
 
+# apt install -y libpython3.10-dev &&\ 
+# apt install -y python3.10-distutils && \
 WORKDIR /app
 
 COPY . .
 
 # Install required packages and create conda environment
 RUN conda install -y python=3.10 && \
-    conda install -y mlflow && \
-    mlflow artifacts download --run-id ${LLM_RUN_ID:-b7370963c55b4a70afcba1829e211bec} --dst-path . && \
-    conda env create -f /app/model/conda.yaml && \
-    conda clean -afy
+    conda install -y mlflow boto3 && \
+    mlflow artifacts download --run-id ${LLM_RUN_ID:-9a35279ef3314dd09042c5836775a0e9} --artifact-path model/conda.yaml --dst-path . && \
+    mlflow artifacts download --run-id ${LLM_RUN_ID:-9a35279ef3314dd09042c5836775a0e9} --artifact-path model/code/requirements.txt --dst-path . && \
+    mv /app/model/conda.yaml /app/ && mv /app/model/code/requirements.txt /app/ && \
+    CMAKE_ARGS="-DLLAMA_CUBLAS=on" conda env create -f conda.yaml && conda clean -afy
 
 # Set default conda environment
 RUN echo "conda activate ${CONDA_ENV_NAME:-mlflow-env}" >> ~/.bashrc

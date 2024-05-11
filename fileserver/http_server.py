@@ -31,6 +31,14 @@ def download_file(filename):
     )
 
 
+@app.route("/files", methods=["GET"])
+def get_file_paths():
+    upload_folder = app.config["UPLOAD_FOLDER"]
+    files = os.listdir(upload_folder)
+    file_paths = [file for file in files]
+    return jsonify({"files": file_paths})
+
+
 @app.route("/")
 def root():
     return "Welcome to the File Server!"

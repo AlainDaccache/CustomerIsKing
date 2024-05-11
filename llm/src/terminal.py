@@ -4,8 +4,30 @@ from data_handler import FileReader, ChromaCRUD, EmbeddingLoader
 from model_handler import LLMLoader
 from langchain.callbacks.manager import CallbackManager
 from langchain.callbacks.streaming_stdout import StreamingStdOutCallbackHandler
+import gradio as gr
+from typing import Any
+from queue import Queue, Empty
+from langchain.callbacks.base import BaseCallbackHandler
+from threading import Thread
+from constants import *
+from langchain.callbacks.manager import CallbackManager
+from model_handler import LLMLoader
+from data_handler import EmbeddingLoader
 
 import time
+
+
+class QueueCallback(BaseCallbackHandler):
+    """Callback handler for streaming LLM responses to a queue."""
+
+    def __init__(self, q):
+        self.q = q
+
+    def on_llm_new_token(self, token: str, **kwargs: Any) -> None:
+        self.q.put(token)
+
+    def on_llm_end(self, *args, **kwargs: Any) -> None:
+        return self.q.empty()
 
 
 def launch_terminal(qa):
@@ -29,6 +51,73 @@ def launch_terminal(qa):
         source_docs = [doc.metadata["source"] for doc in res["source_documents"]]
         print("Source documents:\n", source_docs)
         # print(res)
+
+
+def launch_app(q, qa):
+    job_done = object()
+
+    def answer(question):
+        def task():
+            res = qa(question)
+            answer, docs = res["result"], res["source_documents"]
+            s = "\nHere are the relevant sources for this information:\n"
+            unique_sources = list(set([doc.metadata["source"] for doc in docs]))
+
+            for i, doc in enumerate(unique_sources):
+                s += f"{i + 1}. {doc}\n"
+
+            q.put(s)
+            q.put(job_done)
+
+        t = Thread(target=task)
+        t.start()
+
+    s = """
+    Welcome to Dunya, the intelligent Chatbot for our Fictional Comany! 
+    I am here to assist and guide you through various tasks. Currently, I excel in:
+      • Retrieving and synthesizing information from our extensive knowledge base, covering processes, regulations, and more. Feel free to ask questions such as your rights and obligations for an employee or contractor.
+      
+    In the near future, I will also be capable of extracting data from our database, enhancing my capabilities even further.
+    """
+
+    with gr.Blocks() as demo:
+        chatbot = gr.Chatbot(
+            [[None, s]],
+        )
+        msg = gr.Textbox()
+        clear = gr.Button("Clear")
+
+        def user(user_message, history):
+            return "", history + [[user_message, None]]
+
+        def bot(history):
+            question = history[-1][0]
+            print("Question: ", question)
+            history[-1][1] = ""
+            answer(question=question)
+            while True:
+                try:
+                    next_token = q.get(True, timeout=1)
+                    if next_token is job_done:
+                        break
+                    history[-1][1] += next_token
+                    yield history
+                except Empty:
+                    continue
+
+        msg.submit(user, [msg, chatbot], [msg, chatbot], queue=False).then(
+            bot, chatbot, chatbot
+        )
+        clear.click(lambda: None, None, chatbot, queue=False)
+
+    demo.queue()
+    demo.launch(
+        share=False,
+        debug=False,
+        server_name="0.0.0.0",
+        server_port=7860,
+        ssl_verify=False,
+    )
 
 
 if __name__ == "__main__":
@@ -119,7 +208,11 @@ if __name__ == "__main__":
         default=EMBEDDING_MODEL_NAME,
         help=f"Embedding model name (default: {EMBEDDING_MODEL_NAME})",
     )
-
+    llm_parser.add_argument(
+        "--mode",
+        default="terminal",
+        help=f"Launch mode, either terminal or app",
+    )
     # # Command to ingest data
     # ingest_data_from_paths_parser = subparsers.add_parser(
     #     "ingest_data_from_paths", help="Ingest data"
@@ -246,7 +339,11 @@ if __name__ == "__main__":
     spin_up_llm_from_mlflow_parser.add_argument(
         "--chroma_collection_name", type=str, help="Name of the collection"
     )
-
+    spin_up_llm_from_mlflow_parser.add_argument(
+        "--mode",
+        default="terminal",
+        help=f"Launch mode, either terminal or app",
+    )
     # Command to register embedding model
     register_embedding_parser = subparsers.add_parser(
         "register_embedding_model", help="Register an embedding model"
@@ -301,9 +398,16 @@ if __name__ == "__main__":
     if args.command == "spin_up_llm_from_mlflow":
         from model_handler import LLMLoader
 
+        q = Queue()
         print("ARGUMENTS:")
         print(args)
-        callback_manager = CallbackManager([StreamingStdOutCallbackHandler()])
+        if args.mode == "terminal":
+            callback_manager = CallbackManager([StreamingStdOutCallbackHandler()])
+        elif args.mode == "app":
+            callback_manager = CallbackManager([QueueCallback(q)])
+        else:
+            raise Exception
+
         qa = LLMLoader().load_from_mlflow(
             callback_manager=callback_manager,
             embedding_model_uri=args.embedding_model_uri,
@@ -314,12 +418,23 @@ if __name__ == "__main__":
             mlflow_registry_uri=args.mlflow_registry_uri,
             llm_model_uri=args.llm_model_uri,
         )
-        launch_terminal(qa=qa)
-
+        if args.mode == "terminal":
+            launch_terminal(qa=qa)
+        elif args.mode == "app":
+            launch_app(q=q, qa=qa)
+        else:
+            raise Exception
     if args.command == "spin_up_llm_from_local":
         print("ARGUMENTS:")
         print(args)
-        callback_manager = CallbackManager([StreamingStdOutCallbackHandler()])
+        q = Queue()
+        if args.mode == "terminal":
+            callback_manager = CallbackManager([StreamingStdOutCallbackHandler()])
+        elif args.mode == "app":
+
+            callback_manager = CallbackManager([QueueCallback(q)])
+        else:
+            raise Exception
         embedding_model = EmbeddingLoader().load_from_local(
             model_name=args.embedding_model_name
         )
@@ -341,9 +456,12 @@ if __name__ == "__main__":
             chain_type=args.chain_type,
             callback_manager=callback_manager,
         )
-        print("QA:", qa)
-        launch_terminal(qa=qa)
-
+        if args.mode == "terminal":
+            launch_terminal(qa=qa)
+        elif args.mode == "app":
+            launch_app(q=q, qa=qa)
+        else:
+            raise Exception
     elif args.command == "ingest_data_from_mode":
         print("ARGUMENTS:")
         print(args)

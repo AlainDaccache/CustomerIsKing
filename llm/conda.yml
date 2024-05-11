@@ -1,12 +1,11 @@
-channels:
-- conda-forge
-python: 3.10.14
-build_dependencies:
-- pip==24.0
-- setuptools==69.5.1
-- wheel==0.43.0
-dependencies:
-- python=3.10.14
-- -r requirements.txt
 name: mlflow-env
+channels:
+  - conda-forge
+dependencies:
+  - python=3.10.14
+  - pip=24.0
+  - setuptools==69.5.1
+  - wheel=0.43.0
+  - pip:
+    - -r requirements.txt
 # CMAKE_ARGS="-DLLAMA_CUBLAS=on" conda env create -f conda.yaml

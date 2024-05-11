@@ -4,14 +4,6 @@
 
 # Installation
 
-Download file from: https://communityfoundations.ca/wp-content/uploads/2021/08/HR-Guide_-Policy-and-Procedure-Template.pdf. Move under ./fileserver/uploads.
-
-As well as: https://archive.ics.uci.edu/dataset/352/online+retail. You'll have to Save As .csv, 
-then go to a CSV to JSON converter
-
-```
-
-```
 
 ## Pre-Requisites
 
