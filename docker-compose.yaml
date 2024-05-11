@@ -26,7 +26,8 @@ x-airflow-common:
     - ${AIRFLOW_PROJ_DIR:-.}/plugins:/opt/airflow/plugins
     - ${AIRFLOW_PROJ_DIR:-.}/ingestion-volume-dag-airflow:/opt/airflow/dag_generated_configs
     - ${AIRFLOW_PROJ_DIR:-.}/ingestion-volume-tmp:/tmp
-  user: "${AIRFLOW_UID:-50000}:0"
+    - /var/run/docker.sock:/var/run/docker.sock
+  user: root # "${AIRFLOW_UID:-50000}:0"
   depends_on: &airflow-common-depends-on
     redis:
       condition: service_healthy
@@ -279,7 +280,6 @@ services:
     restart: always
     networks:
       - app_net
-
   minio:
     image: minio/minio
     container_name: minio
@@ -295,48 +295,48 @@ services:
     networks:
       - app_net
 
-  #   mongo:
-  #     image: mongo:latest
-  #     container_name: mongo
-  #     restart: always
-  #     environment:
-  #       MONGO_INITDB_ROOT_USERNAME: root
-  #       MONGO_INITDB_ROOT_PASSWORD: example
-  #     ports:
-  #       - "27017:27017"
-  #     deploy:
-  #       resources:
-  #         limits:
-  #           cpus: "0.50"
-  #           memory: 2G
-  #       # storage:
-  #       #   journal:
-  #       #     enabled: true
-  #       #   wiredTiger:
-  #       #     engineConfig:
-  #       #       cacheSizeGB: 2
-  #       #       maxCacheOverflowFileSizeGB: 2
-  #       #   inMemory:
-  #       #     engineConfig:
-  #       #       inMemorySizeGB: 2
-  #     volumes:
-  #       - ./mongodb:/data/db
-  #     networks:
-  #       - app_net
-  #   mongo-express:
-  #     image: mongo-express
-  #     container_name: mongo-express
-  #     restart: always
-  #     ports:
-  #       - 8081:8081
-  #     environment:
-  #       ME_CONFIG_MONGODB_ADMINUSERNAME: root
-  #       ME_CONFIG_MONGODB_ADMINPASSWORD: example
-  #       ME_CONFIG_BASICAUTH_USERNAME: root
-  #       ME_CONFIG_BASICAUTH_PASSWORD: example
-  #       ME_CONFIG_MONGODB_URL: mongodb://root:example@mongo:27017/?authSource=admin
-  #     networks:
-  #       - app_net
+  mongo:
+    image: mongo:latest
+    container_name: mongo
+    restart: always
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: example
+    ports:
+      - "27017:27017"
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 2G
+      # storage:
+      #   journal:
+      #     enabled: true
+      #   wiredTiger:
+      #     engineConfig:
+      #       cacheSizeGB: 2
+      #       maxCacheOverflowFileSizeGB: 2
+      #   inMemory:
+      #     engineConfig:
+      #       inMemorySizeGB: 2
+    volumes:
+      - ./mongodb:/data/db
+    networks:
+      - app_net
+  mongo-express:
+    image: mongo-express
+    container_name: mongo-express
+    restart: always
+    ports:
+      - 8081:8081
+    environment:
+      ME_CONFIG_MONGODB_ADMINUSERNAME: root
+      ME_CONFIG_MONGODB_ADMINPASSWORD: example
+      ME_CONFIG_BASICAUTH_USERNAME: root
+      ME_CONFIG_BASICAUTH_PASSWORD: example
+      ME_CONFIG_MONGODB_URL: mongodb://root:example@mongo:27017/?authSource=admin
+    networks:
+      - app_net
 
   mlflow:
     restart: always
@@ -388,7 +388,7 @@ services:
       - 7860:7860 # for local bot (backend + frontend)
       - 6060:6060 # for backend api
     runtime: nvidia
-    image: application
+    image: llm
     container_name: llm
     # To run the terminal: /bin/bash. To run the backend: cd src && python -m bot_backend
     entrypoint: /bin/bash -c "python -m pip install mlflow boto3 minio pydantic fastapi && cd src && /bin/bash" # python -m bot_backend"

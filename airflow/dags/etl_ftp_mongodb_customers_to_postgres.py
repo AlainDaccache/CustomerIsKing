@@ -7,7 +7,8 @@ from airflow.providers.postgres.hooks.postgres import PostgresHook
 from datetime import datetime, timedelta
 from bson.json_util import dumps
 from io import StringIO
-
+from airflow.operators.docker_operator import DockerOperator
+import docker
 import requests
 import os
 import json
@@ -265,6 +266,13 @@ with DAG(
     catchup=False,
     tags=["ecomm", "customer", "transactions"],
     default_args={"owner": "Alain", "retries": 2},
+    params={
+        "embedding_model_uri": "runs:/981d2c4e53864165a04f2ef77365ef14/model",
+        "minio_bucket_name": "my-knowledge-base",
+        "chroma_collection_name": "operations-collection",
+        "docker_image_name": "llm",
+    },
+    user_defined_macros={"json": json},
 ) as dag:
     dummy_start_operator = EmptyOperator(task_id="start", dag=dag)
 
@@ -289,6 +297,50 @@ with DAG(
         task_id="el_pdfs_from_http_to_s3",
         dag=dag,
         op_kwargs={"last_loaded_transaction_date": get_last_loaded_transaction_date},
+    )
+
+    """
+                "mlflow_tracking_uri": "http://{{ var.value.mlflow_host }}:{{ var.value.mlflow_port }}",
+            "mlflow_registry_uri": "{{ json.loads(conn.minio.extra)['endpoint_url'] }}",
+            "embedding_model_uri": "{{ params.embedding_model_uri }}",
+            "chroma_host": "{{ var.value.chroma_host }}",
+            "chroma_port": "{{ var.value.chroma_port }}",
+            "chroma_collection_name": "{{ params.chroma_collection_name }}",
+            "minio_access_key": "{{ json.loads(conn.minio.extra)['aws_access_key_id'] }}",
+            "minio_secret_key": "{{ json.loads(conn.minio.extra)['aws_secret_access_key'] }}",
+            "minio_bucket_name": "{{ params.minio_bucket_name }}",
+        },
+    """
+
+    ingest_embeddings_from_s3_to_chromadb_task = DockerOperator(
+        task_id="ingest_embeddings_from_s3_to_chromadb_task",
+        image="{{ params.docker_image_name }}",
+        command=[
+            "sh",
+            "-c",
+            """
+        cd src && \
+
+        python -m terminal ingest_data_from_mode \
+        --mlflow_tracking_uri http://{{ var.value.mlflow_host }}:{{ var.value.mlflow_port }} \
+        --mlflow_registry_uri {{ json.loads(conn.minio.extra)['endpoint_url'] }} \
+        --embedding_model_uri "{{ params.embedding_model_uri }}"  \
+        --chroma_host {{ var.value.chroma_host }} \
+        --chroma_port {{ var.value.chroma_port }} \
+        --chroma_collection_name "{{ params.chroma_collection_name }}" \
+        --embeddings_model_source mlflow \
+        --minio_access_key {{ json.loads(conn.minio.extra)['aws_access_key_id'] }} \
+        --minio_secret_key {{ json.loads(conn.minio.extra)['aws_secret_access_key'] }} \
+        --minio_bucket_name "{{ params.minio_bucket_name }}" \
+        --data_source minio \
+        --full
+
+    """,
+        ],
+        device_requests=[docker.types.DeviceRequest(count=-1, capabilities=[["gpu"]])],
+        dag=dag,
+        # FIXME for some reason param not substituting during runtime, hardcoding for now
+        network_mode="customerisking_app_net",  # "{{ params.docker_network_name }}",  # "container:llm",
     )
     #######################################################################
 
@@ -372,15 +424,22 @@ with DAG(
         dag=dag,
     )
 
-    ##########################################################################################
+    #########################################################################################
 
     (
         dummy_start_operator
-        >> [el_raw_transactions_mongodb_to_s3_task, el_pdfs_from_http_to_s3_task]
+        >> el_raw_transactions_mongodb_to_s3_task
         >> create_schema
         >> [create_customers_table, create_items_table]
         >> create_transactions_table
         >> [truncate_items_table, truncate_customers_table]
+    )
+
+    (
+        dummy_start_operator
+        >> el_pdfs_from_http_to_s3_task
+        >> ingest_embeddings_from_s3_to_chromadb_task
+        >> dummy_end_operator
     )
     truncate_customers_table >> task_etl_customers_s3_to_postgres_dim
     truncate_items_table >> task_etl_items_s3_to_postgres_dim

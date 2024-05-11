@@ -1,4 +1,4 @@
-FROM apache/airflow:2.6.0-python3.8
+FROM apache/airflow:2.7.0-python3.8
 USER root
 RUN apt-get update \
     # && apt-get install -y --no-install-recommends \
@@ -17,6 +17,7 @@ RUN pip install --no-cache-dir --user \
     apache-airflow-providers-amazon \
     apache-airflow[amazon]
 
+RUN pip install --no-cache-dir --user apache-airflow-providers-celery>=3.3.0 docker
 ARG INGESTION_DEPENDENCY="postgres,mlflow,datalake-s3"
 
 # RUN pip install --no-cache-dir --user "openmetadata-managed-apis==1.0.0.0" --constraint "https://raw.githubusercontent.com/apache/airflow/constraints-2.4.1/constraints-3.8.txt"

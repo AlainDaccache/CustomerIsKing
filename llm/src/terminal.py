@@ -260,6 +260,19 @@ if __name__ == "__main__":
         "--hugging_face_filename", help="Hugging Face filename", default=None
     )
 
+    register_embedding_parser.add_argument(
+        "--mlflow_tracking_uri",
+        type=str,
+        help="MLFlow tracking URI",
+        default=os.getenv("MLFLOW_TRACKING_URI"),
+    )
+    register_embedding_parser.add_argument(
+        "--mlflow_registry_uri",
+        type=str,
+        help="MLFlow registry URI",
+        default=os.getenv("MLFLOW_S3_ENDPOINT_URL"),
+    )
+
     # Command to register LLM
     register_llm_parser = subparsers.add_parser("register_llm", help="Register an LLM")
     register_llm_parser.add_argument(
@@ -269,6 +282,18 @@ if __name__ == "__main__":
     )
     register_llm_parser.add_argument(
         "--hugging_face_filename", help="Hugging Face filename", default=MODEL_BASENAME
+    )
+    register_llm_parser.add_argument(
+        "--mlflow_tracking_uri",
+        type=str,
+        help="MLFlow tracking URI",
+        default=os.getenv("MLFLOW_TRACKING_URI"),
+    )
+    register_llm_parser.add_argument(
+        "--mlflow_registry_uri",
+        type=str,
+        help="MLFlow registry URI",
+        default=os.getenv("MLFLOW_S3_ENDPOINT_URL"),
     )
 
     args = parser.parse_args()

@@ -1,5 +1,5 @@
 # FROM python:3.10.6
-# FROM nvidia/cuda:11.6.2-base-ubuntu20.04
+# FROM nvidia/cuda:11.6.2-base-ubuntu20.04 AS build-stage
 FROM nvidia/cuda:12.3.1-devel-ubuntu20.04
 
 # Install Python
@@ -12,7 +12,6 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive \
 RUN curl -sSL https://install.python-poetry.org | python3.10 - --preview
 RUN pip3 install --upgrade requests
 RUN ln -fs /usr/bin/python3.10 /usr/bin/python
-
 
 # LLM specific binaries
 RUN apt-get update && \
@@ -32,6 +31,11 @@ COPY requirements.txt .
 
 ENV CMAKE_ARGS="-DLLAMA_CUBLAS=ON"
 RUN python -m pip install --no-cache-dir -r requirements.txt
+# try run with pip install --user 
+# FROM nvidia/cuda:12.3.1-devel-ubuntu20.04 as final-stage
+# COPY --from=build-stage /root/.local /root.local
+# maybe apt-install again?
+# ENV PATH=/root/.local/bin:$PATH
 
 # RUN python -m pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/nightly/cu121
 # RUN python -m pip install pysqlite3-binary openpyxl langchain-community gradio accelerate bitsandbytes kaleido python-multipart langchain chromadb langchainhub bs4 InstructorEmbedding sentence-transformers==2.2.2 docx2txt gpt4all unstructured[pdf]

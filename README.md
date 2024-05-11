@@ -125,6 +125,11 @@ In the top bar, hover over Admin > Connections. Add the following connections:
 |ecom_postgres| Postgres | postgres | 5432 | postgres | alan | qwerty98||
 |data-lake| Amazon Web Services | <leave empty> | <leave empty> | <leave empty> | <leave empty> | <leave empty> | {"aws_access_key_id": "minio",  "aws_secret_access_key": "qwerty98", "endpoint_url": "http://minio:9000",  "region_name": "us-east-1"}| 
 
+Variables:
+* chroma_host:chroma
+* chroma_port:8000
+* mlflow_host: mlflow
+* mlflow_port: 5001
 ### Relational SQL DB Client
 
 Download `DBeaver` and create a database connection for Postgres. 
