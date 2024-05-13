@@ -115,7 +115,7 @@ In the top bar, hover over Admin > Connections. Add the following connections:
 |--------------|-----------------|------|------|------|---------|------|-------|
 |ecom_mongodb| MongoDB | mongo |27017 | <leave empty> | root | example ||
 |ecom_postgres| Postgres | postgres | 5432 | postgres | alan | qwerty98||
-|data-lake| Amazon Web Services | <leave empty> | <leave empty> | <leave empty> | <leave empty> | <leave empty> | {"aws_access_key_id": "minio",  "aws_secret_access_key": "qwerty98", "endpoint_url": "http://minio:9000",  "region_name": "us-east-1"}| 
+|minio| Amazon Web Services | <leave empty> | <leave empty> | <leave empty> | <leave empty> | <leave empty> | {"aws_access_key_id": "minio",  "aws_secret_access_key": "qwerty98", "endpoint_url": "http://host.docker.internal:9000",  "region_name": "us-east-1"}| 
 
 Variables:
 * chroma_host:chroma

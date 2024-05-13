@@ -7,5 +7,5 @@ dependencies:
   - setuptools==69.5.1
   - wheel=0.43.0
   - pip:
-    - -r requirements.txt
+    - -r /app/requirements.txt
 # CMAKE_ARGS="-DLLAMA_CUBLAS=on" conda env create -f conda.yaml

@@ -63,8 +63,13 @@ def download_and_register_llm(
     experiment_name = "llm_bot"
     if not mlflow.get_experiment_by_name(experiment_name):
         mlflow.create_experiment(name=experiment_name)
+    run_description = "This model is a Retrieval-Augmented Generation (RAG) Language Model based on a quantized implementation of Llama's 7 Billion parameters model."
+
     experiment = mlflow.get_experiment_by_name(experiment_name)
-    with mlflow.start_run(experiment_id=experiment.experiment_id):
+    with mlflow.start_run(
+        experiment_id=experiment.experiment_id, description=run_description
+    ):
+        print("PATH!!", os.path.join(ROOT_DIRECTORY, "requirements.txt"))
         from langchain.llms import LlamaCpp
         from langchain.chains import RetrievalQA
         from langchain.memory import ConversationBufferMemory
@@ -117,12 +122,7 @@ def download_and_register_llm(
                     chain_type_kwargs["memory"] = ConversationBufferMemory(
                         input_key="question", memory_key="history"
                     )
-                print("DEBUG:")
-                print(llm)
-                print(chain_type)
-                print(retriever)
-                print(callback_manager)
-                print(chain_type_kwargs)
+
                 qa = RetrievalQA.from_chain_type(
                     llm=llm,
                     chain_type=chain_type,
@@ -242,13 +242,6 @@ def download_and_register_llm(
                 else:
                     raise Exception(f"Callback manager not supported yet")
 
-        input_schema = Schema(
-            [
-                ColSpec(type="string", name="input_text"),
-            ]
-        )
-        output_schema = Schema([ColSpec(type="string", name="result")])
-        signature = ModelSignature(inputs=input_schema, outputs=output_schema)
         prompt_filename = kwargs.get("prompt_filename", "prompt-v1.txt")
         prompt_path = os.path.join(ROOT_DIRECTORY, "prompts", prompt_filename)
         print("Prompt Path:", prompt_path)
@@ -268,18 +261,47 @@ def download_and_register_llm(
         }
 
         conda_spec_path = os.path.join(ROOT_DIRECTORY, "conda.yml")
+        from copy import deepcopy
+
+        req_path = deepcopy(os.path.join(ROOT_DIRECTORY, "requirements.txt"))
+
         from mlflow.pyfunc import log_model
 
+        for k in ["temperature", "top_p", "max_tokens"]:
+            mlflow.log_param(k, kwargs[k])
+        for k, v in model_config["qa_config"].items():
+            if k == "system_prompt":  # Limit 500 characters
+                continue
+            mlflow.log_param(k, v)
+        # Log model tags
+        model_tags = {
+            "framework": "Hugging Face Transformers",
+            "model type": "LLM",
+            "quantization": "Q4_K_M",
+            "format": "GGUF",
+        }
+        # TODO hardcoded right now, will automate fine-tuning and evaluate performance
+        # we report those metrics based on https://huggingface.co/TheBloke/Llama-2-7B-GGUF
+        mlflow.log_metric("TruthfulQA", 33.29)
+        mlflow.log_metric("Toxigen", 21.25)
+        mlflow.set_tags(model_tags)
         model_info = log_model(
             artifact_path="model",
             python_model=LLMWrapper(),
             artifacts=artifacts,
-            signature=signature,
+            signature=ModelSignature(
+                inputs=Schema(
+                    [
+                        ColSpec(type="string", name="input_text"),
+                    ]
+                ),
+                outputs=Schema([ColSpec(type="string", name="result")]),
+            ),
             input_example={
                 "input_text": "How many sales have we made in the past year in the UK?"
             },
             conda_env=conda_spec_path,
-            code_paths=[os.path.join(ROOT_DIRECTORY, "requirements.txt")],
+            code_paths=[req_path],
             model_config=model_config,
         )
 
@@ -380,6 +402,9 @@ def download_and_register_embeddings(
                 )
 
         conda_spec_path = os.path.join(ROOT_DIRECTORY, "conda.yml")
+        from copy import deepcopy
+
+        req_path = deepcopy(os.path.join(ROOT_DIRECTORY, "requirements.txt"))
         logged_model_path = "model"  # hugging_face_repo_id.replace("/", "--")
         from mlflow.pyfunc import log_model, load_model
 
@@ -387,7 +412,7 @@ def download_and_register_embeddings(
             artifact_path=logged_model_path,  # logged_model_path,
             python_model=EmbeddingWrapper(),
             artifacts=artifacts,
-            code_paths=[os.path.join(ROOT_DIRECTORY, "requirements.txt")],
+            code_paths=[req_path],
             conda_env=conda_spec_path,
         )
         # run_id = mlflow.active_run().info.run_id

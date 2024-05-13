@@ -38,10 +38,10 @@ async def answer(question: str):
     res = qa(question)
     answer, docs = res["result"], res["source_documents"]
     if len(docs):
-        s = "\nHere are the relevant sources for this information:\n"
+        s = "\n\nHere are the relevant sources for this information:\n"
         unique_sources = list(set([doc.metadata["source"] for doc in docs]))
         for i, doc in enumerate(unique_sources):
-            s += f"{i + 1}. {doc}\n"
+            s += f"• {doc}\n"
 
         answer = f"{answer}{s}"
 

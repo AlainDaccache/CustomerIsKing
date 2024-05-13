@@ -18,7 +18,7 @@ from psycopg2.extensions import register_adapter, AsIs
 from airflow import DAG
 from airflow.operators.empty import EmptyOperator
 
-S3_CONN_ID = "data-lake"
+S3_CONN_ID = "minio"
 S3_TRANSACTIONS_BUCKET = "my-ecom-transactions"
 S3_KNOWLEDGE_BUCKET = "my-knowledge-base"
 S3_TARGET_KEY = f"{datetime.today().strftime('%Y-%m-%d')}.json"
@@ -80,6 +80,7 @@ def download_files_to_local():
                 f.write(response.content)
         except Exception as e:
             print(f"An error occurred: {e}")
+    return FILENAMES
 
 
 def upload_files_to_minio(bucket_name, filenames):
@@ -94,9 +95,9 @@ def upload_files_to_minio(bucket_name, filenames):
 
 
 def el_pdfs_from_http_to_s3(last_loaded_transaction_date: datetime):
-    filenames = [url.split("/")[-1] for url in FILE_DOWNLOADS_URLS]
-    download_files_to_local(urls=FILE_DOWNLOADS_URLS, filenames=filenames)
-    upload_files_to_minio(bucket_name=S3_KNOWLEDGE_BUCKET, filenames=filenames)
+    FILENAMES = download_files_to_local()
+    print("FILENAMES:", FILENAMES)
+    upload_files_to_minio(bucket_name=S3_KNOWLEDGE_BUCKET, filenames=FILENAMES)
 
 
 def el_raw_transactions_mongodb_to_s3(last_loaded_transaction_date: datetime):
@@ -269,7 +270,7 @@ with DAG(
     tags=["ecomm", "customer", "transactions"],
     default_args={"owner": "Alain", "retries": 2},
     params={
-        "embedding_model_uri": "runs:/981d2c4e53864165a04f2ef77365ef14/model",
+        "embedding_model_uri": "runs:/20e9a0caf94a454aa775e4db84825f63/model",
         "minio_bucket_name": "my-knowledge-base",
         "chroma_collection_name": "operations-collection",
         "docker_image_name": "llm",
@@ -300,19 +301,6 @@ with DAG(
         dag=dag,
         op_kwargs={"last_loaded_transaction_date": get_last_loaded_transaction_date},
     )
-
-    """
-                "mlflow_tracking_uri": "http://{{ var.value.mlflow_host }}:{{ var.value.mlflow_port }}",
-            "mlflow_registry_uri": "{{ json.loads(conn.minio.extra)['endpoint_url'] }}",
-            "embedding_model_uri": "{{ params.embedding_model_uri }}",
-            "chroma_host": "{{ var.value.chroma_host }}",
-            "chroma_port": "{{ var.value.chroma_port }}",
-            "chroma_collection_name": "{{ params.chroma_collection_name }}",
-            "minio_access_key": "{{ json.loads(conn.minio.extra)['aws_access_key_id'] }}",
-            "minio_secret_key": "{{ json.loads(conn.minio.extra)['aws_secret_access_key'] }}",
-            "minio_bucket_name": "{{ params.minio_bucket_name }}",
-        },
-    """
 
     ingest_embeddings_from_s3_to_chromadb_task = DockerOperator(
         task_id="ingest_embeddings_from_s3_to_chromadb_task",

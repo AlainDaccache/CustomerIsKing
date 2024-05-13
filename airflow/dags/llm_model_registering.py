@@ -1,6 +1,8 @@
 from airflow import DAG
 from datetime import timedelta
 from airflow.operators.docker_operator import DockerOperator
+from airflow.operators.empty import EmptyOperator
+
 from airflow.utils.dates import days_ago
 import docker
 
@@ -30,9 +32,28 @@ dag = DAG(
     tags=["mlflow", "models"],
 )
 
+
+# Data Verification
+embedding_input_data_verification = EmptyOperator(
+    task_id="embedding_input_data_verification",
+    dag=dag,
+)
+
+# Feature Engineering
+embedding_feature_engineering = EmptyOperator(
+    task_id="embedding_feature_engineering",
+    dag=dag,
+)
+
+# Model Training
+embedding_model_training = EmptyOperator(
+    task_id="embedding_model_training",
+    dag=dag,
+)
+
 # Install required packages and register embedding model task
-register_embedding_model = DockerOperator(
-    task_id="register_embedding_model",
+embedding_model_registering = DockerOperator(
+    task_id="embedding_model_registering",
     image="{{ params.docker_image_name }}",
     # command=""" python -m pip install minio mlflow boto3 && python -m pip install -r requirements.txt && python -m terminal register_embedding_model --hugging_face_repo_id "{{ params.embedding_hf_repo_id }}" {% if params.embedding_hf_filename %}--hugging_face_filename "{{ params.embedding_hf_filename }}" {% endif %}""",
     command=[
@@ -47,9 +68,28 @@ register_embedding_model = DockerOperator(
     network_mode="container:llm",  # "{{ params.docker_network_name }}"
 )
 
+# Data Verification
+llm_input_data_verification = EmptyOperator(
+    task_id="llm_input_data_verification",
+    dag=dag,
+)
+
+# Feature Engineering
+llm_feature_engineering = EmptyOperator(
+    task_id="llm_feature_engineering",
+    dag=dag,
+)
+
+# Model Training
+llm_training = EmptyOperator(
+    task_id="llm_training",
+    dag=dag,
+)
+
+
 # Install required packages and register LLM model task
-register_llm_model = DockerOperator(
-    task_id="register_llm_model",
+llm_registering = DockerOperator(
+    task_id="llm_registering",
     image="{{ params.docker_image_name }}",
     command=[
         "sh",
@@ -68,4 +108,21 @@ register_llm_model = DockerOperator(
 )
 
 # Define task dependencies
-register_embedding_model >> register_llm_model
+dummy_start = EmptyOperator(dag=dag, task_id="start")
+dummy_end = EmptyOperator(dag=dag, task_id="end")
+
+dummy_start >> [embedding_input_data_verification, llm_input_data_verification]
+(
+    embedding_input_data_verification
+    >> embedding_feature_engineering
+    >> embedding_model_training
+    >> embedding_model_registering
+    >> dummy_end
+)
+(
+    llm_input_data_verification
+    >> llm_feature_engineering
+    >> llm_training
+    >> llm_registering
+    >> dummy_end
+)

@@ -64,7 +64,7 @@ def launch_app(q, qa):
             unique_sources = list(set([doc.metadata["source"] for doc in docs]))
 
             for i, doc in enumerate(unique_sources):
-                s += f"{i + 1}. {doc}\n"
+                s += f"• {doc}\n"
 
             q.put(s)
             q.put(job_done)
@@ -73,17 +73,21 @@ def launch_app(q, qa):
         t.start()
 
     s = """
-    Welcome to Dunya, the intelligent Chatbot for our Fictional Comany! 
+    Welcome to Dunya, the intelligent Chatbot for our Foundation! 
     I am here to assist and guide you through various tasks. Currently, I excel in:
       • Retrieving and synthesizing information from our extensive knowledge base, covering processes, regulations, and more. Feel free to ask questions such as your rights and obligations for an employee or contractor.
       
     In the near future, I will also be capable of extracting data from our database, enhancing my capabilities even further.
     """
+    CSS = """
+        .contain { display: flex; flex-direction: column; }
+        .gradio-container { height: 100vh !important; }
+        #component-0 { height: 100%; }
+        #chatbot { flex-grow: 1; overflow: auto;}
+        """
 
-    with gr.Blocks() as demo:
-        chatbot = gr.Chatbot(
-            [[None, s]],
-        )
+    with gr.Blocks(css=CSS) as demo:
+        chatbot = gr.Chatbot([[None, s]], elem_id="chatbot")
         msg = gr.Textbox()
         clear = gr.Button("Clear")
 
